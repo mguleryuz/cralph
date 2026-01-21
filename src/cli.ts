@@ -13,7 +13,7 @@ import {
   selectOutput,
   checkForPathsFile,
 } from "./paths";
-import { run, cleanupSubprocess, checkClaudeAuth, runClaudeLogin } from "./runner";
+import { run, cleanupSubprocess, checkClaudeAuth } from "./runner";
 import type { RalphConfig } from "./types";
 
 // Graceful shutdown on Ctrl+C
@@ -74,6 +74,12 @@ const main = defineCommand({
       alias: "h",
       required: false,
     },
+    yes: {
+      type: "boolean",
+      description: "Auto-confirm all prompts (for CI/automation)",
+      alias: "y",
+      required: false,
+    },
   },
   async run({ args }) {
     setupGracefulExit();
@@ -86,31 +92,18 @@ const main = defineCommand({
       const isAuthed = await checkClaudeAuth();
       
       if (!isAuthed) {
-        consola.warn("Claude CLI is not authenticated");
-        
-        const shouldLogin = await consola.prompt("Would you like to log in now?", {
-          type: "confirm",
-          initial: true,
-        });
-        
-        if (shouldLogin !== true) {
-          consola.info("Run 'claude /login' to authenticate, then try again.");
-          process.exit(0);
-        }
-        
-        const loginSuccess = await runClaudeLogin();
-        if (!loginSuccess) {
-          consola.error("Login failed. Please try 'claude /login' manually.");
-          process.exit(1);
-        }
-        
-        consola.success("Logged in successfully!\n");
-      } else {
-        consola.success("Claude authenticated");
+        consola.error("Claude CLI is not authenticated\n");
+        consola.box("claude\n\nThen type: /login");
+        consola.info("After logging in, run cralph again.");
+        process.exit(1);
       }
+      
+      consola.success("Claude authenticated");
 
       // Check for existing paths file in cwd
-      const pathsFileResult = await checkForPathsFile(cwd);
+      const pathsFileResult = args.yes 
+        ? await checkForPathsFile(cwd, true) // Auto-run if --yes
+        : await checkForPathsFile(cwd);
       
       if (pathsFileResult?.action === "run") {
         // Use existing config file
@@ -189,15 +182,17 @@ const main = defineCommand({
       consola.info(`  Output: ${config.output}`);
       console.log();
 
-      // Confirm before running
-      const proceed = await consola.prompt("Start processing?", {
-        type: "confirm",
-        initial: true,
-      });
+      // Confirm before running (skip if --yes)
+      if (!args.yes) {
+        const proceed = await consola.prompt("Start processing?", {
+          type: "confirm",
+          initial: true,
+        });
 
-      if (proceed !== true) {
-        consola.info("Cancelled.");
-        process.exit(0);
+        if (proceed !== true) {
+          consola.info("Cancelled.");
+          process.exit(0);
+        }
       }
 
       // Run the main loop

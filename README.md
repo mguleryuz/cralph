@@ -72,13 +72,33 @@ Save as `.ralph/paths.json` and cralph auto-detects it. Output is typically `.` 
 
 ## How It Works
 
-1. Checks if Claude CLI is authenticated (prompts to login if not)
+1. Checks if Claude CLI is authenticated (exits with instructions if not)
 2. Reads your source material from `refs/`
 3. Injects your rule into the prompt
 4. Runs `claude -p --dangerously-skip-permissions` in a loop
 5. Stops when Claude outputs `<promise>COMPLETE</promise>`
 
 ## Expected Behavior
+
+**Auth check (runs first):**
+```
+◐ Checking Claude authentication...
+✔ Claude authenticated
+```
+
+If not authenticated:
+```
+◐ Checking Claude authentication...
+✖ Claude CLI is not authenticated
+
+╭─────────────────────╮
+│ claude              │
+│                     │
+│ Then type: /login   │
+╰─────────────────────╯
+
+ℹ After logging in, run cralph again.
+```
 
 **Auto-detect existing config:**
 ```
@@ -119,6 +139,7 @@ Save as `.ralph/paths.json` and cralph auto-detects it. Output is typically `.` 
 - Running Claude processes are terminated cleanly
 
 **Output Files:**
+- `.ralph/paths.json` - Configuration file
 - `.ralph/ralph.log` - Session log with timestamps
 - `.ralph/TODO.md` - Agent status tracker
 

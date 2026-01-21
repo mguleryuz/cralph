@@ -221,12 +221,18 @@ export async function selectOutput(cwd: string, defaultOutput?: string): Promise
 /**
  * Check if a paths file exists and offer to use it
  * Returns: { action: "run", path: string } | { action: "edit" } | null
+ * @param autoRun - If true, skip prompt and auto-select "run" when config exists
  */
-export async function checkForPathsFile(cwd: string): Promise<{ action: "run"; path: string } | { action: "edit" } | null> {
+export async function checkForPathsFile(cwd: string, autoRun?: boolean): Promise<{ action: "run"; path: string } | { action: "edit" } | null> {
   const filePath = join(cwd, ".ralph", "paths.json");
   const file = Bun.file(filePath);
   
   if (await file.exists()) {
+    // Auto-run if flag is set
+    if (autoRun) {
+      return { action: "run", path: filePath };
+    }
+    
     console.log(CONTROLS);
     const action = await consola.prompt(
       `Found .ralph/paths.json. What would you like to do?`,

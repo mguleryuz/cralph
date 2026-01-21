@@ -39,22 +39,6 @@ export async function checkClaudeAuth(): Promise<boolean> {
   }
 }
 
-/**
- * Run Claude login flow
- */
-export async function runClaudeLogin(): Promise<boolean> {
-  consola.info("Opening Claude login...\n");
-  
-  // Run claude login interactively
-  const proc = Bun.spawn(["claude", "/login"], {
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  
-  const exitCode = await proc.exited;
-  return exitCode === 0;
-}
 
 /**
  * Initialize the runner state and log file

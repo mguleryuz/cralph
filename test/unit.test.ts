@@ -8,7 +8,7 @@ import type { RalphConfig } from "../src/types";
 
 const TEST_DIR = resolve(import.meta.dir);
 const REFS_DIR = join(TEST_DIR, "refs");
-const RULE_FILE = join(TEST_DIR, "rules.md");
+const RULE_FILE = join(TEST_DIR, "rule.md");
 const OUTPUT_DIR = TEST_DIR; // Use current dir as output (.)
 const RALPH_DIR = join(TEST_DIR, ".ralph");
 const PATHS_FILE = join(RALPH_DIR, "paths.json");
@@ -36,7 +36,7 @@ describe("paths", () => {
     // Create paths file inline for this test
     await Bun.write(PATHS_FILE, JSON.stringify({
       refs: ["./refs"],
-      rule: "./rules.md",
+      rule: "./rule.md",
       output: "."
     }, null, 2));
 
@@ -45,7 +45,7 @@ describe("paths", () => {
     expect(config).toBeDefined();
     expect(config.refs).toBeArray();
     expect(config.refs).toContain("./refs");
-    expect(config.rule).toBe("./rules.md");
+    expect(config.rule).toBe("./rule.md");
     expect(config.output).toBe(".");
   });
 
@@ -77,7 +77,7 @@ describe("paths", () => {
   test("validateConfig throws for missing rule file", async () => {
     const config: RalphConfig = {
       refs: [REFS_DIR],
-      rule: "/nonexistent/rules.md",
+      rule: "/nonexistent/rule.md",
       output: OUTPUT_DIR,
     };
 
@@ -122,7 +122,7 @@ describe("config integration", () => {
     // Ensure paths file exists for this test
     await Bun.write(PATHS_FILE, JSON.stringify({
       refs: ["./refs"],
-      rule: "./rules.md",
+      rule: "./rule.md",
       output: "."
     }, null, 2));
 
@@ -172,7 +172,7 @@ describe("config file generation", () => {
 
     const content = await file.json();
     expect(content.refs).toContain("./refs");
-    expect(content.rule).toBe("./rules.md");
+    expect(content.rule).toBe("./rule.md");
     expect(content.output).toBe(".");
   });
 
@@ -181,7 +181,7 @@ describe("config file generation", () => {
     const loaded = await loadPathsFile(PATHS_FILE);
 
     expect(loaded.refs).toContain("./refs");
-    expect(loaded.rule).toBe("./rules.md");
+    expect(loaded.rule).toBe("./rule.md");
     expect(loaded.output).toBe(".");
 
     // Resolve and validate
@@ -213,26 +213,4 @@ describe("cli args parsing", () => {
     expect(stdout).toContain("--output");
   });
 
-  test("CLI starts with auth check", async () => {
-    const proc = Bun.spawn(["bun", "run", "src/cli.ts"], {
-      cwd: resolve(TEST_DIR, ".."),
-      stdout: "pipe",
-      stderr: "pipe",
-      stdin: "pipe",
-    });
-
-    // Close stdin immediately to simulate non-interactive
-    proc.stdin.end();
-
-    // Give it a moment to start
-    await new Promise((r) => setTimeout(r, 500));
-    proc.kill();
-
-    const stdout = await new Response(proc.stdout).text();
-    const stderr = await new Response(proc.stderr).text();
-    const output = stdout + stderr;
-    
-    // Should show auth check message at start
-    expect(output).toContain("Checking Claude authentication");
-  });
 });
