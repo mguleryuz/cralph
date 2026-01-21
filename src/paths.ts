@@ -1,7 +1,11 @@
 import { consola } from "consola";
-import { resolve, join, basename } from "path";
+import { resolve, join } from "path";
 import { readdir, stat } from "fs/promises";
-import type { PathSelectionMode, PathsFileConfig, RalphConfig } from "./types";
+import type { PathsFileConfig, RalphConfig } from "./types";
+
+// Dim text helper
+const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
+const CONTROLS = dim("↑↓ Navigate • Space Toggle • Enter • Ctrl+C Exit");
 
 /**
  * List directories in a given path
@@ -11,6 +15,52 @@ async function listDirectories(basePath: string): Promise<string[]> {
   return entries
     .filter((e) => e.isDirectory() && !e.name.startsWith("."))
     .map((e) => e.name);
+}
+
+/**
+ * Directories to exclude from listing
+ */
+const EXCLUDED_DIRS = [
+  "node_modules",
+  "dist",
+  "build",
+  ".git",
+  ".next",
+  ".nuxt",
+  ".output",
+  "coverage",
+  "__pycache__",
+  "vendor",
+  ".cache",
+];
+
+/**
+ * List directories recursively up to a certain depth
+ */
+async function listDirectoriesRecursive(
+  basePath: string,
+  maxDepth: number = 3
+): Promise<string[]> {
+  const results: string[] = [];
+
+  async function walk(dir: string, depth: number) {
+    if (depth > maxDepth) return;
+    
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      // Skip hidden and excluded directories
+      if (!entry.isDirectory()) continue;
+      if (entry.name.startsWith(".")) continue;
+      if (EXCLUDED_DIRS.includes(entry.name)) continue;
+      
+      const fullPath = join(dir, entry.name);
+      results.push(fullPath);
+      await walk(fullPath, depth + 1);
+    }
+  }
+
+  await walk(basePath, 1);
+  return results;
 }
 
 /**
@@ -26,7 +76,10 @@ async function listFilesRecursive(
     const entries = await readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
       const fullPath = join(dir, entry.name);
-      if (entry.isDirectory() && !entry.name.startsWith(".")) {
+      if (entry.isDirectory()) {
+        // Skip hidden and excluded directories
+        if (entry.name.startsWith(".")) continue;
+        if (EXCLUDED_DIRS.includes(entry.name)) continue;
         await walk(fullPath);
       } else if (entry.isFile()) {
         if (extensions.some((ext) => entry.name.endsWith(ext))) {
@@ -38,26 +91,6 @@ async function listFilesRecursive(
 
   await walk(basePath);
   return results;
-}
-
-/**
- * Prompt user for path selection mode
- */
-async function askSelectionMode(label: string): Promise<PathSelectionMode> {
-  const mode = await consola.prompt(`How would you like to specify ${label}?`, {
-    type: "select",
-    options: [
-      { label: "📂 Select from current directory", value: "select", hint: "Browse and pick" },
-      { label: "✏️  Enter path manually", value: "manual", hint: "Type the path" },
-      { label: "📄 Use paths file", value: "file", hint: "Load from JSON" },
-    ],
-  });
-
-  if (typeof mode === "symbol") {
-    throw new Error("Selection cancelled");
-  }
-
-  return mode as PathSelectionMode;
 }
 
 /**
@@ -73,145 +106,149 @@ export async function loadPathsFile(filePath: string): Promise<PathsFileConfig> 
 }
 
 /**
- * Prompt user to select refs directories
+ * Prompt user to select refs directories (simple multiselect)
  */
-export async function selectRefs(cwd: string): Promise<string[]> {
-  const mode = await askSelectionMode("refs (reference material)");
-
-  if (mode === "manual") {
-    const input = await consola.prompt(
-      "Enter refs paths (comma-separated):",
-      { type: "text", placeholder: "./src, ./lib" }
-    );
-    if (typeof input === "symbol") throw new Error("Selection cancelled");
-    return input
-      .split(",")
-      .map((p) => resolve(cwd, p.trim()))
-      .filter(Boolean);
+export async function selectRefs(cwd: string, defaults?: string[]): Promise<string[]> {
+  // Get all directories up to 3 levels deep
+  const allDirs = await listDirectoriesRecursive(cwd, 3);
+  
+  if (allDirs.length === 0) {
+    consola.warn("No directories found");
+    throw new Error("No directories available to select");
   }
 
-  if (mode === "select") {
-    const dirs = await listDirectories(cwd);
-    if (dirs.length === 0) {
-      consola.warn("No directories found in current directory");
-      return selectRefs(cwd); // retry
-    }
+  // Convert to relative paths for display
+  const options = allDirs.map((d) => {
+    const relative = d.replace(cwd + "/", "");
+    const isDefault = defaults?.includes(d);
+    return {
+      label: `📁 ${relative}`,
+      value: d,
+      hint: isDefault ? "current" : undefined,
+    };
+  });
 
-    const selected = await consola.prompt("Select refs directories:", {
-      type: "multiselect",
-      options: dirs.map((d) => ({ label: `📁 ${d}`, value: d, hint: "source" })),
-    });
+  // Get initial selections (indices of defaults)
+  const initialValues = defaults?.filter((d) => allDirs.includes(d)) || [];
 
-    if (typeof selected === "symbol") throw new Error("Selection cancelled");
-    return (selected as string[]).map((d) => resolve(cwd, d));
+  console.log(CONTROLS);
+  const selected = await consola.prompt("Select refs directories:", {
+    type: "multiselect",
+    options,
+    initial: initialValues,
+  });
+
+  // Handle cancel (symbol) or empty result
+  if (typeof selected === "symbol" || !selected || (Array.isArray(selected) && selected.length === 0)) {
+    throw new Error("Selection cancelled");
   }
-
-  // file mode - will be handled at config level
-  throw new Error("Use loadPathsFile for file-based configuration");
+  
+  return selected as string[];
 }
 
 /**
- * Prompt user to select a rules file
+ * Prompt user to select a rule file
  */
-export async function selectRules(cwd: string): Promise<string> {
-  const mode = await askSelectionMode("rules file");
-
-  if (mode === "manual") {
-    const input = await consola.prompt("Enter rules file path:", {
-      type: "text",
-      placeholder: "./rules.md",
-    });
-    if (typeof input === "symbol") throw new Error("Selection cancelled");
-    return resolve(cwd, input.trim());
+export async function selectRule(cwd: string, defaultRule?: string): Promise<string> {
+  const files = await listFilesRecursive(cwd, [".mdc", ".md"]);
+  if (files.length === 0) {
+    consola.warn("No .mdc or .md files found");
+    throw new Error("No rule files available to select");
   }
 
-  if (mode === "select") {
-    const files = await listFilesRecursive(cwd, [".mdc", ".md"]);
-    if (files.length === 0) {
-      consola.warn("No .mdc or .md files found");
-      return selectRules(cwd); // retry
-    }
+  // Show relative paths for readability
+  const options = files.map((f) => ({
+    label: `📄 ${f.replace(cwd + "/", "")}`,
+    value: f,
+    hint: f === defaultRule ? "current" : (f.endsWith(".mdc") ? "cursor rule" : "markdown"),
+  }));
 
-    // Show relative paths for readability
-    const options = files.map((f) => ({
-      label: `📄 ${f.replace(cwd + "/", "")}`,
-      value: f,
-      hint: f.endsWith(".mdc") ? "cursor rules" : "markdown",
-    }));
+  // Find index of default for initial selection
+  const initialIndex = defaultRule ? files.findIndex((f) => f === defaultRule) : 0;
 
-    const selected = await consola.prompt("Select rules file:", {
-      type: "select",
-      options,
-    });
+  console.log(CONTROLS);
+  const selected = await consola.prompt("Select rule file:", {
+    type: "select",
+    options,
+    initial: initialIndex >= 0 ? initialIndex : 0,
+  });
 
-    if (typeof selected === "symbol") throw new Error("Selection cancelled");
-    return selected as string;
-  }
-
-  throw new Error("Use loadPathsFile for file-based configuration");
+  if (typeof selected === "symbol") throw new Error("Selection cancelled");
+  return selected as string;
 }
 
 /**
  * Prompt user to select output directory
  */
-export async function selectOutput(cwd: string): Promise<string> {
-  const mode = await askSelectionMode("output directory");
+export async function selectOutput(cwd: string, defaultOutput?: string): Promise<string> {
+  const dirs = await listDirectories(cwd);
+  
+  // Determine default value for matching
+  const defaultDir = defaultOutput === cwd ? "." : defaultOutput?.replace(cwd + "/", "");
+  
+  const options = [
+    { label: "📍 Current directory (.)", value: ".", hint: defaultDir === "." ? "current" : "Output here" },
+    ...dirs.map((d) => ({ 
+      label: `📁 ${d}`, 
+      value: d,
+      hint: d === defaultDir ? "current" : undefined,
+    })),
+  ];
 
-  if (mode === "manual") {
-    const input = await consola.prompt("Enter output directory path:", {
-      type: "text",
-      default: "./docs",
-    });
-    if (typeof input === "symbol") throw new Error("Selection cancelled");
-    return resolve(cwd, input.trim());
+  // Find initial index
+  let initialIndex = 0;
+  if (defaultDir) {
+    const idx = defaultDir === "." ? 0 : dirs.findIndex((d) => d === defaultDir) + 1;
+    if (idx >= 0) initialIndex = idx;
   }
 
-  if (mode === "select") {
-    const dirs = await listDirectories(cwd);
-    const options = [
-      { label: "✨ Create new directory", value: "__new__", hint: "Will be created" },
-      ...dirs.map((d) => ({ label: `📁 ${d}`, value: d })),
-    ];
+  console.log(CONTROLS);
+  const selected = await consola.prompt("Select output directory:", {
+    type: "select",
+    options,
+    initial: initialIndex,
+  });
 
-    const selected = await consola.prompt("Select output directory:", {
-      type: "select",
-      options,
-    });
+  if (typeof selected === "symbol") throw new Error("Selection cancelled");
 
-    if (typeof selected === "symbol") throw new Error("Selection cancelled");
-
-    if (selected === "__new__") {
-      const newDir = await consola.prompt("Enter new directory name:", {
-        type: "text",
-        default: "docs",
-      });
-      if (typeof newDir === "symbol") throw new Error("Selection cancelled");
-      return resolve(cwd, newDir.trim());
-    }
-
-    return resolve(cwd, selected as string);
+  if (selected === ".") {
+    return cwd;
   }
 
-  throw new Error("Use loadPathsFile for file-based configuration");
+  return resolve(cwd, selected as string);
 }
 
 /**
  * Check if a paths file exists and offer to use it
+ * Returns: { action: "run", path: string } | { action: "edit" } | null
  */
-export async function checkForPathsFile(cwd: string): Promise<string | null> {
+export async function checkForPathsFile(cwd: string): Promise<{ action: "run"; path: string } | { action: "edit" } | null> {
   const candidates = ["ralph.paths.json", ".ralph.paths.json", "paths.json"];
 
   for (const candidate of candidates) {
     const filePath = join(cwd, candidate);
     const file = Bun.file(filePath);
     if (await file.exists()) {
-      const useIt = await consola.prompt(
-        `Found ${candidate}. Use it for configuration?`,
-        { type: "confirm", initial: true }
+      console.log(CONTROLS);
+      const action = await consola.prompt(
+        `Found ${candidate}. What would you like to do?`,
+        {
+          type: "select",
+          options: [
+            { label: "🚀 Run with this config", value: "run" },
+            { label: "✏️  Edit configuration", value: "edit" },
+          ],
+        }
       );
-      if (useIt === true) {
-        return filePath;
+      
+      if (typeof action === "symbol") {
+        throw new Error("Selection cancelled");
       }
+      
+      if (action === "run") {
+        return { action: "run", path: filePath };
+      }
+      return { action: "edit" };
     }
   }
 
@@ -231,10 +268,10 @@ export async function validateConfig(config: RalphConfig): Promise<void> {
     }
   }
 
-  // Check rules file
-  const rulesFile = Bun.file(config.rules);
-  if (!(await rulesFile.exists())) {
-    throw new Error(`Rules file does not exist: ${config.rules}`);
+  // Check rule file
+  const ruleFile = Bun.file(config.rule);
+  if (!(await ruleFile.exists())) {
+    throw new Error(`Rule file does not exist: ${config.rule}`);
   }
 
   // Output directory will be created if needed
@@ -251,15 +288,15 @@ export async function buildConfig(cwd: string): Promise<RalphConfig> {
     const loaded = await loadPathsFile(pathsFile);
     return {
       refs: loaded.refs.map((r) => resolve(cwd, r)),
-      rules: resolve(cwd, loaded.rules),
+      rule: resolve(cwd, loaded.rule),
       output: resolve(cwd, loaded.output),
     };
   }
 
   // Interactive selection
   const refs = await selectRefs(cwd);
-  const rules = await selectRules(cwd);
+  const rule = await selectRule(cwd);
   const output = await selectOutput(cwd);
 
-  return { refs, rules, output };
+  return { refs, rule, output };
 }

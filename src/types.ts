@@ -1,14 +1,9 @@
 /**
- * Path selection mode for CLI prompts
- */
-export type PathSelectionMode = "manual" | "select" | "file";
-
-/**
  * Configuration loaded from a paths file (e.g., ralph.paths.json)
  */
 export interface PathsFileConfig {
   refs: string[];
-  rules: string;
+  rule: string;
   output: string;
 }
 
@@ -18,8 +13,8 @@ export interface PathsFileConfig {
 export interface RalphConfig {
   /** Paths to reference material directories/files */
   refs: string[];
-  /** Path to the rules file (.mdc or .md) */
-  rules: string;
+  /** Path to the rule file (.mdc or .md) */
+  rule: string;
   /** Output directory for generated docs */
   output: string;
 }

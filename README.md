@@ -4,13 +4,13 @@
   <img src="assets/ralph.png" alt="Ralph cooking" width="500">
 </p>
 
-Claude in a loop. Point at refs, give it rules, let it cook.
+Claude in a loop. Point at refs, give it a rule, let it cook.
 
 ```
-refs/  ──loop──>  output/
-(source)   │      (result)
+refs/  ──loop──>  ./
+(source)   │      (output in cwd)
            │
-        rules.md
+        rule.md
 ```
 
 ## What is Ralph?
@@ -38,37 +38,37 @@ npm install -g cralph
 ## Usage
 
 ```bash
-# Interactive - prompts for everything
+# Run - auto-detects ralph.paths.json in cwd
 cralph
 
-# With flags
-cralph --refs ./source --rules ./rules.md --output ./out
+# First run (no config) - interactive mode generates ralph.paths.json
+cralph
 
-# With config file
-cralph --paths-file ralph.paths.json
+# Override with flags
+cralph --refs ./source --rule ./rule.md --output .
 ```
 
 ## Path Selection
 
-When prompted, choose how to specify each path:
+Simple multiselect for all paths:
 
-| Mode | What it does |
-|------|--------------|
-| Select from cwd | Pick directories/files interactively |
-| Manual | Type the path |
-| Paths file | Load from JSON config |
+- **Space** to toggle selection
+- **Enter** to confirm
+- **Ctrl+C** to exit
+- Shows all directories up to 3 levels deep
+- Pre-selects current values in edit mode
 
 ## Config File
 
 ```json
 {
   "refs": ["./refs", "./more-refs"],
-  "rules": "./.cursor/rules/my-rules.mdc",
-  "output": "./output"
+  "rule": "./.cursor/rules/my-rules.mdc",
+  "output": "."
 }
 ```
 
-Name it `ralph.paths.json` and cralph auto-detects it.
+Name it `ralph.paths.json` and cralph auto-detects it. Output is typically `.` (current directory) since you'll run cralph in your repo.
 
 ## How It Works
 
@@ -76,6 +76,58 @@ Name it `ralph.paths.json` and cralph auto-detects it.
 2. Injects your rules into the prompt
 3. Runs `claude -p --dangerously-skip-permissions` in a loop
 4. Stops when Claude outputs `<promise>COMPLETE</promise>`
+
+## Expected Behavior
+
+**Auto-detect existing config:**
+```
+❯ Found ralph.paths.json. What would you like to do?
+● 🚀 Run with this config
+○ ✏️  Edit configuration
+```
+
+**Interactive Mode (no config file):**
+```
+ℹ Interactive configuration mode
+
+↑↓ Navigate • Space Toggle • Enter • Ctrl+C Exit
+❯ Select refs directories:
+◻ 📁 src
+◻ 📁 src/components
+◼ 📁 docs
+
+↑↓ Navigate • Space Toggle • Enter • Ctrl+C Exit
+❯ Select rule file:
+● 📄 .cursor/rules/my-rules.mdc (cursor rule)
+○ 📄 README.md
+
+↑↓ Navigate • Space Toggle • Enter • Ctrl+C Exit
+❯ Select output directory:
+● 📍 Current directory (.)
+○ 📁 docs
+```
+
+**Save config after selection:**
+```
+? Save configuration to ralph.paths.json? (Y/n)
+✔ Saved ralph.paths.json
+```
+
+**Cancellation:**
+- Press `Ctrl+C` at any time to exit
+- Running Claude processes are terminated cleanly
+
+**Output Files:**
+- `.ralph/ralph.log` - Session log with timestamps
+- `.ralph/TODO.md` - Agent status tracker
+
+## Testing
+
+```bash
+bun test
+```
+
+Tests validate config loading, prompt building, and CLI behavior without calling Claude.
 
 ## Requirements
 

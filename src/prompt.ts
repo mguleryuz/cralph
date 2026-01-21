@@ -49,11 +49,11 @@ ${rulesContent}
 }
 
 /**
- * Read rules file and build complete prompt
+ * Read rule file and build complete prompt
  */
 export async function createPrompt(config: RalphConfig): Promise<string> {
-  const rulesFile = Bun.file(config.rules);
-  const rulesContent = await rulesFile.text();
+  const ruleFile = Bun.file(config.rule);
+  const ruleContent = await ruleFile.text();
 
-  return buildPrompt(config, rulesContent);
+  return buildPrompt(config, ruleContent);
 }

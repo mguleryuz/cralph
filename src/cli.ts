@@ -8,42 +8,42 @@ import {
   loadPathsFile,
   validateConfig,
   selectRefs,
-  selectRules,
+  selectRule,
   selectOutput,
+  checkForPathsFile,
 } from "./paths";
 import { run, cleanupSubprocess } from "./runner";
 import type { RalphConfig } from "./types";
 
-const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
-
 // Graceful shutdown on Ctrl+C
 function setupGracefulExit() {
+  let shuttingDown = false;
+  
   process.on("SIGINT", () => {
+    if (shuttingDown) {
+      // Force exit on second Ctrl+C
+      process.exit(1);
+    }
+    shuttingDown = true;
     cleanupSubprocess();
     console.log("\n");
     consola.info("Cancelled.");
+    // Use setImmediate to ensure output is flushed
+    setImmediate(() => process.exit(0));
+  });
+  
+  // Also handle SIGTERM
+  process.on("SIGTERM", () => {
+    cleanupSubprocess();
     process.exit(0);
   });
-}
-
-function showKeybindings() {
-  console.log();
-  console.log(dim("─".repeat(50)));
-  console.log(
-    dim("  ↑/↓") + " Navigate  " +
-    dim("Space") + " Toggle  " +
-    dim("Enter") + " Confirm  " +
-    dim("Ctrl+C") + " Cancel"
-  );
-  console.log(dim("─".repeat(50)));
-  console.log();
 }
 
 const main = defineCommand({
   meta: {
     name: "cralph",
     version: "1.0.0",
-    description: "Claude in a loop. Point at refs, give it rules, let it cook.",
+    description: "Claude in a loop. Point at refs, give it a rule, let it cook.",
   },
   args: {
     refs: {
@@ -53,25 +53,18 @@ const main = defineCommand({
       alias: "r",
       required: false,
     },
-    rules: {
+    rule: {
       type: "string",
-      description: "Path to rules file (.mdc or .md)",
-      valueHint: "rules.md",
+      description: "Path to rule file (.mdc or .md)",
+      valueHint: "rule.md",
       alias: "u",
       required: false,
     },
     output: {
       type: "string",
       description: "Output directory where results will be written",
-      valueHint: "./output",
+      valueHint: ".",
       alias: "o",
-      required: false,
-    },
-    "paths-file": {
-      type: "string",
-      description: "Path to configuration file (JSON)",
-      valueHint: "ralph.paths.json",
-      alias: "p",
       required: false,
     },
     help: {
@@ -87,53 +80,74 @@ const main = defineCommand({
     let config: RalphConfig;
 
     try {
-      // If paths-file is provided, use it
-      if (args["paths-file"]) {
-        const pathsFilePath = resolve(cwd, args["paths-file"]);
-        consola.info(`Loading config from ${pathsFilePath}`);
-        const loaded = await loadPathsFile(pathsFilePath);
+      // Check for existing paths file in cwd
+      const pathsFileResult = await checkForPathsFile(cwd);
+      
+      if (pathsFileResult?.action === "run") {
+        // Use existing config file
+        consola.info(`Loading config from ${pathsFileResult.path}`);
+        const loaded = await loadPathsFile(pathsFileResult.path);
         config = {
           refs: loaded.refs.map((r) => resolve(cwd, r)),
-          rules: resolve(cwd, loaded.rules),
+          rule: resolve(cwd, loaded.rule),
           output: resolve(cwd, loaded.output),
         };
-      }
-      // If all args are provided via CLI flags
-      else if (args.refs && args.rules && args.output) {
-        config = {
-          refs: args.refs.split(",").map((r) => resolve(cwd, r.trim())),
-          rules: resolve(cwd, args.rules),
-          output: resolve(cwd, args.output),
-        };
-      }
-      // Interactive mode - some or no args provided
-      else {
-        consola.info("Interactive configuration mode");
-        showKeybindings();
-
-        // Use provided args or prompt for missing ones
-        let refs: string[];
-        if (args.refs) {
-          refs = args.refs.split(",").map((r) => resolve(cwd, r.trim()));
+      } else {
+        // Load existing config for edit mode defaults
+        let existingConfig: RalphConfig | null = null;
+        if (pathsFileResult?.action === "edit") {
+          consola.info("Edit configuration");
+          const candidates = ["ralph.paths.json", ".ralph.paths.json", "paths.json"];
+          for (const candidate of candidates) {
+            const filePath = resolve(cwd, candidate);
+            const file = Bun.file(filePath);
+            if (await file.exists()) {
+              const loaded = await loadPathsFile(filePath);
+              existingConfig = {
+                refs: loaded.refs.map((r) => resolve(cwd, r)),
+                rule: resolve(cwd, loaded.rule),
+                output: resolve(cwd, loaded.output),
+              };
+              break;
+            }
+          }
         } else {
-          refs = await selectRefs(cwd);
+          consola.info("Interactive configuration mode");
         }
 
-        let rules: string;
-        if (args.rules) {
-          rules = resolve(cwd, args.rules);
-        } else {
-          rules = await selectRules(cwd);
-        }
+        // Interactive selection
+        const refs = args.refs 
+          ? args.refs.split(",").map((r) => resolve(cwd, r.trim()))
+          : await selectRefs(cwd, existingConfig?.refs);
+        
+        const rule = args.rule 
+          ? resolve(cwd, args.rule)
+          : await selectRule(cwd, existingConfig?.rule);
+        
+        const output = args.output 
+          ? resolve(cwd, args.output)
+          : await selectOutput(cwd, existingConfig?.output);
 
-        let output: string;
-        if (args.output) {
-          output = resolve(cwd, args.output);
-        } else {
-          output = await selectOutput(cwd);
-        }
+        config = { refs, rule, output };
 
-        config = { refs, rules, output };
+        // Offer to save config
+        const saveConfig = await consola.prompt("Save configuration to ralph.paths.json?", {
+          type: "confirm",
+          initial: true,
+        });
+
+        if (saveConfig === true) {
+          const pathsConfig = {
+            refs: config.refs.map((r) => "./" + r.replace(cwd + "/", "")),
+            rule: "./" + config.rule.replace(cwd + "/", ""),
+            output: config.output === cwd ? "." : "./" + config.output.replace(cwd + "/", ""),
+          };
+          await Bun.write(
+            resolve(cwd, "ralph.paths.json"),
+            JSON.stringify(pathsConfig, null, 2)
+          );
+          consola.success("Saved ralph.paths.json");
+        }
       }
 
       // Validate configuration
@@ -143,7 +157,7 @@ const main = defineCommand({
       // Show config summary
       consola.info("Configuration:");
       consola.info(`  Refs: ${config.refs.join(", ")}`);
-      consola.info(`  Rules: ${config.rules}`);
+      consola.info(`  Rule: ${config.rule}`);
       consola.info(`  Output: ${config.output}`);
       console.log();
 
