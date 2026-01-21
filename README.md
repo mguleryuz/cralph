@@ -98,9 +98,14 @@ Claude maintains this structure:
 - [ ] Pending task
 - [x] Completed task
 
+---
+
 # Notes
 
-Any relevant context
+## Task Title - Done
+- What was implemented
+- Files changed
+- Learnings: patterns discovered, gotchas encountered
 ```
 
 ## First Run (No .ralph/ in cwd)

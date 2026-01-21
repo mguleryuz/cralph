@@ -9,13 +9,7 @@ import { setCurrentProcess, throwIfCancelled } from "./state";
 const COMPLETION_SIGNAL = "<promise>COMPLETE</promise>";
 const AUTH_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
-const INITIAL_TODO_CONTENT = `# Patterns
-
-_None yet - add reusable patterns discovered during work_
-
----
-
-# Tasks
+const INITIAL_TODO_CONTENT = `# Tasks
 
 - [ ] Task 1
 - [ ] Task 2
@@ -187,6 +181,48 @@ async function log(state: RunnerState, message: string): Promise<void> {
 }
 
 /**
+ * Try to commit progress after each iteration
+ * Fails gracefully - logs warning and continues if commit fails
+ */
+async function tryCommitProgress(state: RunnerState, cwd: string): Promise<void> {
+  try {
+    // Stage all changes
+    const addProc = Bun.spawn(["git", "add", "-A"], {
+      cwd,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    await addProc.exited;
+
+    // Commit with iteration number
+    const commitMessage = `chore(ralph): iteration ${state.iteration} progress`;
+    const commitProc = Bun.spawn(
+      ["git", "commit", "-m", commitMessage, "--no-verify"],
+      {
+        cwd,
+        stdout: "pipe",
+        stderr: "pipe",
+      }
+    );
+    
+    const exitCode = await commitProc.exited;
+    
+    if (exitCode === 0) {
+      consola.info(`Committed iteration ${state.iteration} progress`);
+      await log(state, `Committed: ${commitMessage}`);
+    } else {
+      // Exit code 1 usually means nothing to commit
+      await log(state, `No changes to commit for iteration ${state.iteration}`);
+    }
+  } catch (error) {
+    // Gracefully fail - just log and continue
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    consola.warn(`Could not commit progress: ${errorMsg}`);
+    await log(state, `Commit failed: ${errorMsg}`);
+  }
+}
+
+/**
  * Run a single Claude iteration
  */
 async function runIteration(
@@ -267,6 +303,9 @@ export async function run(config: RalphConfig): Promise<void> {
     console.log("━".repeat(40));
 
     const result = await runIteration(prompt, state, cwd);
+
+    // Try to commit progress after each iteration (fails gracefully)
+    await tryCommitProgress(state, cwd);
 
     if (result.isComplete) {
       break;

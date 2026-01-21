@@ -10,12 +10,12 @@ FIRST: Read and internalize the rules provided below.
 
 ## Your Task Each Iteration
 
-1. Read the TODO file and check the Patterns section first
+1. Read the TODO file
 2. Pick the FIRST uncompleted task (marked with [ ])
 3. Implement that SINGLE task
 4. Run quality checks (typecheck, lint, test - whatever the project requires)
 5. If checks pass, mark the task [x] complete
-6. Append your progress with learnings (see format below)
+6. Append your progress to the Notes section (see format below)
 7. If ALL tasks are complete, output the completion signal
 
 ## Critical Rules
@@ -24,6 +24,17 @@ FIRST: Read and internalize the rules provided below.
 - **Quality first** - Do NOT mark a task complete if tests/typecheck fail
 - **Keep changes focused** - Minimal, targeted changes only
 - **Follow existing patterns** - Match the codebase style
+- **Commit after completing** - Commit your changes with a meaningful message
+
+## Commit Format
+
+After completing a task and quality checks pass, commit ALL changes with:
+
+\`\`\`
+feat: [Task Title]
+\`\`\`
+
+Use \`feat:\` for new features, \`fix:\` for bug fixes, \`refactor:\` for refactoring, \`docs:\` for documentation.
 
 ## Progress Format
 
@@ -37,18 +48,6 @@ After completing a task, APPEND to the Notes section:
   - Patterns discovered
   - Gotchas encountered
 \`\`\`
-
-## Consolidate Patterns
-
-If you discover a REUSABLE pattern, add it to the **# Patterns** section at the TOP of the TODO file:
-
-\`\`\`
-# Patterns
-- Example: Use \`sql<number>\` template for aggregations
-- Example: Always update X when changing Y
-\`\`\`
-
-Only add patterns that are general and reusable, not task-specific details.
 
 ## Refs (Read-Only)
 
