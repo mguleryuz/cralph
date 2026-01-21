@@ -1,7 +1,7 @@
 # cralph
 
 <p align="center">
-  <img src="assets/ralph.png" alt="Ralph cooking" width="500">
+  <img src="https://raw.githubusercontent.com/mguleryuz/cralph/main/assets/ralph.png" alt="Ralph cooking" width="500">
 </p>
 
 Claude in a loop. Give it a rule, let it cook.
