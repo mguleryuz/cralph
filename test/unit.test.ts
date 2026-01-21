@@ -86,6 +86,8 @@ describe("paths", () => {
 });
 
 describe("prompt", () => {
+  const TODO_FILE = join(OUTPUT_DIR, ".ralph", "TODO.md");
+
   test("buildPrompt creates prompt with rule and config", async () => {
     const config: RalphConfig = {
       refs: [REFS_DIR],
@@ -94,11 +96,12 @@ describe("prompt", () => {
     };
     const ruleContent = "# Test Rules\nDo something.";
     
-    const prompt = buildPrompt(config, ruleContent);
+    const prompt = buildPrompt(config, ruleContent, TODO_FILE);
     
     expect(prompt).toContain("# Test Rules");
     expect(prompt).toContain(REFS_DIR);
     expect(prompt).toContain(OUTPUT_DIR);
+    expect(prompt).toContain(TODO_FILE);
     expect(prompt).toContain("<promise>COMPLETE</promise>");
   });
 
@@ -109,11 +112,12 @@ describe("prompt", () => {
       output: OUTPUT_DIR,
     };
 
-    const prompt = await createPrompt(config);
+    const prompt = await createPrompt(config, TODO_FILE);
     
     expect(prompt).toContain("# Test Rules");
     expect(prompt).toContain(REFS_DIR);
     expect(prompt).toContain(OUTPUT_DIR);
+    expect(prompt).toContain(TODO_FILE);
   });
 });
 
@@ -140,7 +144,8 @@ describe("config integration", () => {
     await validateConfig(config);
 
     // Build prompt
-    const prompt = await createPrompt(config);
+    const todoFile = join(config.output, ".ralph", "TODO.md");
+    const prompt = await createPrompt(config, todoFile);
 
     expect(prompt).toBeDefined();
     expect(prompt.length).toBeGreaterThan(100);

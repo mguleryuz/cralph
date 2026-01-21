@@ -1,30 +1,73 @@
 import { consola } from "consola";
 import { join } from "path";
 import { mkdir } from "fs/promises";
+import { homedir } from "os";
 import type { RalphConfig, RunnerState, IterationResult } from "./types";
 import { createPrompt } from "./prompt";
 
 const COMPLETION_SIGNAL = "<promise>COMPLETE</promise>";
+const AUTH_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
-const INITIAL_TODO_CONTENT = `# Ralph Agent Status
+const INITIAL_TODO_CONTENT = `# Tasks
 
-## Current Status
+- [ ] Task 1
+- [ ] Task 2
 
-Idle - waiting for documents in refs/
-
-## Processed Files
+# Notes
 
 _None yet_
-
-## Pending
-
-_Check refs/ for new documents_
 `;
 
 /**
+ * Get the auth cache file path
+ */
+function getAuthCachePath(): string {
+  return join(homedir(), ".cralph", "auth-cache.json");
+}
+
+/**
+ * Check if cached auth is still valid
+ */
+async function isAuthCacheValid(): Promise<boolean> {
+  try {
+    const cachePath = getAuthCachePath();
+    const file = Bun.file(cachePath);
+    if (!(await file.exists())) {
+      return false;
+    }
+    const cache = await file.json();
+    const cachedAt = cache.timestamp;
+    const now = Date.now();
+    return now - cachedAt < AUTH_CACHE_TTL_MS;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Save successful auth to cache
+ */
+async function saveAuthCache(): Promise<void> {
+  try {
+    const cachePath = getAuthCachePath();
+    const cacheDir = join(homedir(), ".cralph");
+    await mkdir(cacheDir, { recursive: true });
+    await Bun.write(cachePath, JSON.stringify({ timestamp: Date.now() }));
+  } catch {
+    // Ignore cache write errors
+  }
+}
+
+/**
  * Check if Claude CLI is authenticated by sending a minimal test prompt
+ * Uses cache to avoid checking too frequently (6 hour TTL)
  */
 export async function checkClaudeAuth(): Promise<boolean> {
+  // Check cache first
+  if (await isAuthCacheValid()) {
+    return true;
+  }
+
   try {
     // Send a minimal prompt to test auth
     const proc = Bun.spawn(["claude", "-p"], {
@@ -47,8 +90,13 @@ export async function checkClaudeAuth(): Promise<boolean> {
       return false;
     }
     
-    // If exit code is 0, auth is working
-    return exitCode === 0;
+    // If exit code is 0, auth is working - save to cache
+    if (exitCode === 0) {
+      await saveAuthCache();
+      return true;
+    }
+    
+    return false;
   } catch {
     return false;
   }
@@ -101,7 +149,7 @@ Ralph Session: ${state.startTime.toISOString()}
       "Found existing TODO with progress. Reset to start fresh?",
       {
         type: "confirm",
-        initial: false,
+        initial: true,
       }
     );
     
@@ -125,28 +173,6 @@ async function log(state: RunnerState, message: string): Promise<void> {
   const file = Bun.file(state.logFile);
   const existing = await file.text();
   await Bun.write(state.logFile, existing + logLine);
-}
-
-/**
- * Count files in refs directories (excluding .gitkeep and hidden files)
- */
-async function countRefs(refs: string[]): Promise<number> {
-  let count = 0;
-
-  for (const refPath of refs) {
-    try {
-      const entries = await Array.fromAsync(
-        new Bun.Glob("**/*").scan({ cwd: refPath, onlyFiles: true })
-      );
-      count += entries.filter(
-        (e) => !e.startsWith(".") && !e.includes("/.") && e !== ".gitkeep"
-      ).length;
-    } catch {
-      // Directory might not exist or be empty
-    }
-  }
-
-  return count;
 }
 
 // Track current subprocess for cleanup
@@ -234,17 +260,8 @@ export async function run(config: RalphConfig): Promise<void> {
   consola.info(`Log: ${state.logFile}`);
   consola.info(`TODO: ${state.todoFile}`);
 
-  // Count initial refs
-  const initialCount = await countRefs(config.refs);
-  consola.info(`Found ${initialCount} files to process`);
-
-  if (initialCount === 0) {
-    consola.warn("No files found in refs directories");
-    return;
-  }
-
   // Build prompt once
-  const prompt = await createPrompt(config);
+  const prompt = await createPrompt(config, state.todoFile);
 
   // Ensure output directory exists
   await mkdir(config.output, { recursive: true });
@@ -254,9 +271,6 @@ export async function run(config: RalphConfig): Promise<void> {
   // Main loop
   while (true) {
     console.log("━".repeat(40));
-
-    const refCount = await countRefs(config.refs);
-    consola.info(`${refCount} ref files remaining`);
 
     const result = await runIteration(prompt, state, cwd);
 

@@ -4,13 +4,13 @@
   <img src="assets/ralph.png" alt="Ralph cooking" width="500">
 </p>
 
-Claude in a loop. Point at refs, give it a rule, let it cook.
+Claude in a loop. Give it a rule, let it cook.
 
 ```
-refs/  ──loop──>  ./
-(source)   │      (output in cwd)
+rule.md ──loop──> ./
+           │      (output)
            │
-        rule.md
+        refs/ (optional)
 ```
 
 ## What is Ralph?
@@ -21,7 +21,7 @@ refs/  ──loop──>  ./
 while :; do cat PROMPT.md | claude -p ; done
 ```
 
-cralph wraps this into a CLI with path selection and logging.
+cralph wraps this into a CLI with config, logging, and TODO tracking.
 
 ## Install
 
@@ -35,121 +35,106 @@ Or with npm:
 npm install -g cralph
 ```
 
+## Quick Start
+
+```bash
+# In an empty directory - creates starter structure
+cralph
+
+# Edit rule.md with your instructions, then run again
+cralph
+```
+
 ## Usage
 
 ```bash
-# Run - auto-detects .ralph/paths.json in cwd
-cralph
-
-# First run (no config) - interactive mode generates .ralph/paths.json
+# Auto-detects .ralph/paths.json in cwd
 cralph
 
 # Override with flags
 cralph --refs ./source --rule ./rule.md --output .
+
+# Auto-confirm prompts (CI/automation)
+cralph --yes
 ```
 
-## Path Selection
+## How It Works
 
-Simple multiselect for all paths:
+1. Checks Claude CLI auth (cached for 6 hours)
+2. Loads config from `.ralph/paths.json`
+3. Runs `claude -p --dangerously-skip-permissions` in a loop
+4. Claude updates `.ralph/TODO.md` after each iteration
+5. Stops when Claude outputs `<promise>COMPLETE</promise>`
 
-- **Space** to toggle selection
-- **Enter** to confirm
-- **Ctrl+C** to exit
-- Shows all directories up to 3 levels deep
-- Pre-selects current values in edit mode
-
-## Config File
+## Config
 
 ```json
 {
-  "refs": ["./refs", "./more-refs"],
-  "rule": "./.cursor/rules/my-rules.mdc",
+  "refs": ["./refs"],
+  "rule": "./rule.md",
   "output": "."
 }
 ```
 
-Save as `.ralph/paths.json` and cralph auto-detects it. Output is typically `.` (current directory) since you'll run cralph in your repo.
+Save as `.ralph/paths.json`. Refs are optional reference material (read-only).
 
-## How It Works
+## Files
 
-1. Checks if Claude CLI is authenticated (exits with instructions if not)
-2. Reads your source material from `refs/`
-3. Injects your rule into the prompt
-4. Runs `claude -p --dangerously-skip-permissions` in a loop
-5. Stops when Claude outputs `<promise>COMPLETE</promise>`
+| File | Description |
+|------|-------------|
+| `.ralph/paths.json` | Configuration |
+| `.ralph/TODO.md` | Task tracking (updated by Claude) |
+| `.ralph/ralph.log` | Session log |
+| `~/.cralph/auth-cache.json` | Auth cache (6h TTL) |
 
-## Expected Behavior
+### TODO Format
 
-**Auth check (runs first):**
-```
-◐ Checking Claude authentication...
-✔ Claude authenticated
-```
+Claude maintains this structure:
 
-If not authenticated:
-```
-◐ Checking Claude authentication...
-✖ Claude CLI is not authenticated
+```markdown
+# Tasks
 
-╭─────────────────────╮
-│ claude              │
-│                     │
-│ Then type: /login   │
-╰─────────────────────╯
+- [ ] Pending task
+- [x] Completed task
 
-ℹ After logging in, run cralph again.
+# Notes
+
+Any relevant context
 ```
 
-**Auto-detect existing config:**
+## First Run (Empty Directory)
+
+```
+ℹ Created refs/ directory
+ℹ Created rule.md with starter template
+ℹ Created .ralph/paths.json
+
+╭──────────────────────────────────────────────╮
+│ 1. Add source files to refs/                 │
+│ 2. Edit rule.md with your instructions       │
+│ 3. Run cralph again                          │
+╰──────────────────────────────────────────────╯
+```
+
+## Prompts
+
+**Config detected:**
 ```
 ❯ Found .ralph/paths.json. What would you like to do?
 ● 🚀 Run with this config
 ○ ✏️  Edit configuration
 ```
 
-**Interactive Mode (no config file):**
+**TODO has progress:**
 ```
-ℹ Interactive configuration mode
-
-↑↓ Navigate • Space Toggle • Enter • Ctrl+C Exit
-❯ Select refs directories:
-◻ 📁 src
-◻ 📁 src/components
-◼ 📁 docs
-
-↑↓ Navigate • Space Toggle • Enter • Ctrl+C Exit
-❯ Select rule file:
-● 📄 .cursor/rules/my-rules.mdc (cursor rule)
-○ 📄 README.md
-
-↑↓ Navigate • Space Toggle • Enter • Ctrl+C Exit
-❯ Select output directory:
-● 📍 Current directory (.)
-○ 📁 docs
+? Found existing TODO with progress. Reset to start fresh? (Y/n)
 ```
 
-**Save config after selection:**
-```
-? Save configuration to .ralph/paths.json? (Y/n)
-✔ Saved .ralph/paths.json
-```
+## Path Selection
 
-**TODO state check (on run):**
-```
-? Found existing TODO with progress. Reset to start fresh? (y/N)
-```
-- If the `.ralph/TODO.md` file has been modified from previous runs, you'll be asked whether to reset it
-- Default is **No** (continue with existing progress)
-- Choose **Yes** to start fresh with a clean TODO
-
-**Cancellation:**
-- Press `Ctrl+C` at any time to exit
-- Running Claude processes are terminated cleanly
-
-**Output Files:**
-- `.ralph/paths.json` - Configuration file
-- `.ralph/ralph.log` - Session log with timestamps
-- `.ralph/TODO.md` - Agent status tracker
+- **Space** - Toggle selection
+- **Enter** - Confirm
+- **Ctrl+C** - Exit
 
 ## Testing
 
@@ -157,8 +142,8 @@ If not authenticated:
 bun test
 ```
 
-- **Unit tests** validate config loading, prompt building, and CLI behavior
-- **E2E tests** run the full loop with Claude (requires authentication)
+- **Unit tests** - Config, prompt building, CLI
+- **E2E tests** - Full loop with Claude (requires auth)
 
 ## Requirements
 

@@ -1,6 +1,6 @@
 import { consola } from "consola";
 import { resolve, join } from "path";
-import { readdir, stat } from "fs/promises";
+import { readdir, stat, mkdir } from "fs/promises";
 import type { PathsFileConfig, RalphConfig } from "./types";
 
 // Dim text helper
@@ -106,15 +106,46 @@ export async function loadPathsFile(filePath: string): Promise<PathsFileConfig> 
 }
 
 /**
+ * Create starter structure for empty directories
+ */
+export async function createStarterStructure(cwd: string): Promise<void> {
+  // Create .ralph/
+  const ralphDir = join(cwd, ".ralph");
+  await mkdir(ralphDir, { recursive: true });
+  
+  // Create refs/
+  const refsDir = join(cwd, "refs");
+  await mkdir(refsDir, { recursive: true });
+  consola.info("Created refs/ directory");
+  
+  // Create rule.md
+  const rulePath = join(cwd, "rule.md");
+  await Bun.write(rulePath, STARTER_RULE);
+  consola.info("Created rule.md with starter template");
+  
+  // Create .ralph/paths.json with default config
+  const pathsConfig = {
+    refs: ["./refs"],
+    rule: "./rule.md",
+    output: ".",
+  };
+  await Bun.write(join(ralphDir, "paths.json"), JSON.stringify(pathsConfig, null, 2));
+  consola.info("Created .ralph/paths.json");
+  
+  consola.box("1. Add source files to refs/\n2. Edit rule.md with your instructions\n3. Run cralph again");
+}
+
+/**
  * Prompt user to select refs directories (simple multiselect)
  */
 export async function selectRefs(cwd: string, defaults?: string[]): Promise<string[]> {
   // Get all directories up to 3 levels deep
-  const allDirs = await listDirectoriesRecursive(cwd, 3);
+  let allDirs = await listDirectoriesRecursive(cwd, 3);
   
   if (allDirs.length === 0) {
-    consola.warn("No directories found");
-    throw new Error("No directories available to select");
+    // Create starter structure and exit gracefully
+    await createStarterStructure(cwd);
+    process.exit(0);
   }
 
   // Convert to relative paths for display
@@ -146,14 +177,21 @@ export async function selectRefs(cwd: string, defaults?: string[]): Promise<stri
   return selected as string[];
 }
 
+const STARTER_RULE = `I want a simple ui with a red button
+`;
+
 /**
  * Prompt user to select a rule file
  */
 export async function selectRule(cwd: string, defaultRule?: string): Promise<string> {
-  const files = await listFilesRecursive(cwd, [".mdc", ".md"]);
+  let files = await listFilesRecursive(cwd, [".mdc", ".md"]);
   if (files.length === 0) {
-    consola.warn("No .mdc or .md files found");
-    throw new Error("No rule files available to select");
+    // This shouldn't happen if selectRefs ran first, but handle it just in case
+    const rulePath = join(cwd, "rule.md");
+    await Bun.write(rulePath, STARTER_RULE);
+    consola.info("Created rule.md with starter template");
+    consola.box("Edit rule.md with your instructions then run cralph again");
+    process.exit(0);
   }
 
   // Show relative paths for readability
