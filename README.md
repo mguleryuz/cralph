@@ -134,6 +134,14 @@ If not authenticated:
 ✔ Saved .ralph/paths.json
 ```
 
+**TODO state check (on run):**
+```
+? Found existing TODO with progress. Reset to start fresh? (y/N)
+```
+- If the `.ralph/TODO.md` file has been modified from previous runs, you'll be asked whether to reset it
+- Default is **No** (continue with existing progress)
+- Choose **Yes** to start fresh with a clean TODO
+
 **Cancellation:**
 - Press `Ctrl+C` at any time to exit
 - Running Claude processes are terminated cleanly
@@ -149,7 +157,8 @@ If not authenticated:
 bun test
 ```
 
-Tests validate config loading, prompt building, and CLI behavior without calling Claude.
+- **Unit tests** validate config loading, prompt building, and CLI behavior
+- **E2E tests** run the full loop with Claude (requires authentication)
 
 ## Requirements
 
