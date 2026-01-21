@@ -26,13 +26,11 @@ cralph wraps this into a CLI with config, logging, and TODO tracking.
 ## Install
 
 ```bash
+# Install Bun (if not already installed)
+curl -fsSL https://bun.sh/install | bash
+
+# Install cralph
 bun add -g cralph
-```
-
-Or with npm:
-
-```bash
-npm install -g cralph
 ```
 
 ## Quick Start
