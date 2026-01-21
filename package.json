@@ -1,12 +1,33 @@
 {
   "name": "cralph",
-  "version": "1.0.0",
+  "version": "1.0.0-alpha.0",
   "description": "Claude in a loop. Point at refs, give it rules, let it cook.",
-  "module": "src/cli.ts",
+  "author": "mguleryuz",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mguleryuz/cralph"
+  },
+  "keywords": [
+    "claude",
+    "ai",
+    "cli",
+    "automation",
+    "ralph",
+    "loop",
+    "bun"
+  ],
+  "module": "index.ts",
   "type": "module",
   "bin": {
     "cralph": "./src/cli.ts"
   },
+  "files": [
+    "src",
+    "index.ts",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "start": "bun run src/cli.ts"
   },
@@ -19,5 +40,8 @@
   "dependencies": {
     "citty": "^0.2.0",
     "consola": "^3.4.2"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
   }
 }

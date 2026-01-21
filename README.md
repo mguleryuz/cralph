@@ -22,8 +22,13 @@ cralph wraps this into a CLI with path selection and logging.
 ## Install
 
 ```bash
-bun install
-bun link
+bun add -g cralph
+```
+
+Or with npm:
+
+```bash
+npm install -g cralph
 ```
 
 ## Usage
