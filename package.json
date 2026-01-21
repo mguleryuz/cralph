@@ -1,0 +1,23 @@
+{
+  "name": "cralph",
+  "version": "1.0.0",
+  "description": "Claude in a loop. Point at refs, give it rules, let it cook.",
+  "module": "src/cli.ts",
+  "type": "module",
+  "bin": {
+    "cralph": "./src/cli.ts"
+  },
+  "scripts": {
+    "start": "bun run src/cli.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "citty": "^0.2.0",
+    "consola": "^3.4.2"
+  }
+}
