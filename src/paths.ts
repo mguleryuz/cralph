@@ -11,10 +11,29 @@ const CONTROLS = dim("↑↓ Navigate • Space Toggle • Enter • Ctrl+C Exit
  * List directories in a given path
  */
 async function listDirectories(basePath: string): Promise<string[]> {
-  const entries = await readdir(basePath, { withFileTypes: true });
-  return entries
-    .filter((e) => e.isDirectory() && !e.name.startsWith("."))
-    .map((e) => e.name);
+  try {
+    const entries = await readdir(basePath, { withFileTypes: true });
+    return entries
+      .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+      .map((e) => e.name);
+  } catch (error) {
+    // Silently skip directories we can't access (EPERM, EACCES)
+    if (isAccessError(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+/**
+ * Check if an error is a permission/access error
+ */
+export function isAccessError(error: unknown): boolean {
+  if (error && typeof error === "object" && "code" in error) {
+    const code = (error as { code: string }).code;
+    return code === "EPERM" || code === "EACCES";
+  }
+  return false;
 }
 
 /**
@@ -37,7 +56,7 @@ const EXCLUDED_DIRS = [
 /**
  * List directories recursively up to a certain depth
  */
-async function listDirectoriesRecursive(
+export async function listDirectoriesRecursive(
   basePath: string,
   maxDepth: number = 3
 ): Promise<string[]> {
@@ -46,7 +65,17 @@ async function listDirectoriesRecursive(
   async function walk(dir: string, depth: number) {
     if (depth > maxDepth) return;
     
-    const entries = await readdir(dir, { withFileTypes: true });
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch (error) {
+      // Silently skip directories we can't access (EPERM, EACCES)
+      if (isAccessError(error)) {
+        return;
+      }
+      throw error;
+    }
+    
     for (const entry of entries) {
       // Skip hidden and excluded directories
       if (!entry.isDirectory()) continue;
@@ -66,14 +95,24 @@ async function listDirectoriesRecursive(
 /**
  * List files matching patterns in a directory (recursive)
  */
-async function listFilesRecursive(
+export async function listFilesRecursive(
   basePath: string,
   extensions: string[]
 ): Promise<string[]> {
   const results: string[] = [];
 
   async function walk(dir: string) {
-    const entries = await readdir(dir, { withFileTypes: true });
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch (error) {
+      // Silently skip directories we can't access (EPERM, EACCES)
+      if (isAccessError(error)) {
+        return;
+      }
+      throw error;
+    }
+    
     for (const entry of entries) {
       const fullPath = join(dir, entry.name);
       if (entry.isDirectory()) {

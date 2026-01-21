@@ -1,4 +1,7 @@
-import { test, expect, describe, beforeAll, afterAll } from "bun:test";
+import { test, expect, describe, beforeAll, afterAll, setDefaultTimeout } from "bun:test";
+
+// Set default timeout for all tests and hooks to 30 seconds
+setDefaultTimeout(30000);
 import { resolve, join } from "path";
 import { rm, mkdir } from "fs/promises";
 import { tmpdir } from "os";

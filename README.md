@@ -140,13 +140,19 @@ Use `--yes` to skip confirmation (for CI/automation).
 - **Enter** - Confirm
 - **Ctrl+C** - Exit
 
+## Platform Notes
+
+### macOS Protected Directories
+
+cralph gracefully handles macOS permission errors (`EPERM`, `EACCES`) when scanning directories. Protected locations like `~/Pictures/Photo Booth Library` or iCloud folders are silently skipped, allowing the CLI to run from any directory including root (`/`).
+
 ## Testing
 
 ```bash
 bun test
 ```
 
-- **Unit tests** - Config, prompt building, CLI
+- **Unit tests** - Config, prompt building, CLI, access error handling
 - **E2E tests** - Full loop with Claude (requires auth)
 
 ## Requirements

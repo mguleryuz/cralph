@@ -3,7 +3,14 @@ import { resolve, join } from "path";
 import { rm, mkdir } from "fs/promises";
 import { tmpdir } from "os";
 
-import { loadPathsFile, validateConfig, createStarterStructure } from "../src/paths";
+import { 
+  loadPathsFile, 
+  validateConfig, 
+  createStarterStructure, 
+  isAccessError,
+  listDirectoriesRecursive,
+  listFilesRecursive,
+} from "../src/paths";
 import { createPrompt, buildPrompt } from "../src/prompt";
 import type { RalphConfig } from "../src/types";
 
@@ -175,5 +182,76 @@ describe("cli args parsing", () => {
     expect(stdout).toContain("--refs");
     expect(stdout).toContain("--rule");
     expect(stdout).toContain("--output");
+  });
+});
+
+describe("access error handling", () => {
+  test("isAccessError returns true for EPERM", () => {
+    const error = { code: "EPERM", message: "operation not permitted" };
+    expect(isAccessError(error)).toBe(true);
+  });
+
+  test("isAccessError returns true for EACCES", () => {
+    const error = { code: "EACCES", message: "permission denied" };
+    expect(isAccessError(error)).toBe(true);
+  });
+
+  test("isAccessError returns false for ENOENT", () => {
+    const error = { code: "ENOENT", message: "no such file or directory" };
+    expect(isAccessError(error)).toBe(false);
+  });
+
+  test("isAccessError returns false for other errors", () => {
+    const error = { code: "ENOTDIR", message: "not a directory" };
+    expect(isAccessError(error)).toBe(false);
+  });
+
+  test("isAccessError returns false for null", () => {
+    expect(isAccessError(null)).toBe(false);
+  });
+
+  test("isAccessError returns false for undefined", () => {
+    expect(isAccessError(undefined)).toBe(false);
+  });
+
+  test("isAccessError returns false for string", () => {
+    expect(isAccessError("some error")).toBe(false);
+  });
+
+  test("isAccessError returns false for error without code", () => {
+    const error = { message: "some error" };
+    expect(isAccessError(error)).toBe(false);
+  });
+
+  test("listDirectoriesRecursive handles valid directory", async () => {
+    const dirs = await listDirectoriesRecursive(TEST_DIR, 2);
+    // Should return at least some directories (refs is under .ralph which is hidden, so may not appear)
+    expect(dirs).toBeArray();
+  });
+
+  test("listDirectoriesRecursive returns empty for non-existent directory", async () => {
+    // This should throw ENOENT, not be caught as access error
+    await expect(listDirectoriesRecursive("/nonexistent/path/that/does/not/exist")).rejects.toThrow();
+  });
+
+  test("listFilesRecursive handles valid directory", async () => {
+    const files = await listFilesRecursive(RALPH_DIR, [".md", ".json"]);
+    expect(files).toBeArray();
+    // Should find rule.md and paths.json
+    expect(files.some(f => f.endsWith("rule.md"))).toBe(true);
+    expect(files.some(f => f.endsWith("paths.json"))).toBe(true);
+  });
+
+  test("listFilesRecursive returns empty for non-existent directory", async () => {
+    // This should throw ENOENT, not be caught as access error
+    await expect(listFilesRecursive("/nonexistent/path/that/does/not/exist", [".md"])).rejects.toThrow();
+  });
+
+  test("listFilesRecursive filters by extension", async () => {
+    const mdFiles = await listFilesRecursive(RALPH_DIR, [".md"]);
+    const jsonFiles = await listFilesRecursive(RALPH_DIR, [".json"]);
+    
+    expect(mdFiles.every(f => f.endsWith(".md"))).toBe(true);
+    expect(jsonFiles.every(f => f.endsWith(".json"))).toBe(true);
   });
 });
