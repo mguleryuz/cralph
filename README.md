@@ -62,8 +62,9 @@ cralph --yes
 2. Looks for `.ralph/` in current directory only (not subdirectories)
 3. Loads config from `.ralph/paths.json` or creates starter structure
 4. Runs `claude -p --dangerously-skip-permissions` in a loop
-5. Claude updates `.ralph/TODO.md` after each iteration
-6. Stops when Claude outputs `<promise>COMPLETE</promise>`
+5. Claude completes **ONE task per iteration**, marks it done, then stops
+6. Auto-commits progress after each iteration (fails gracefully if no git)
+7. Stops when Claude outputs `<promise>COMPLETE</promise>`
 
 ## Config
 
@@ -90,7 +91,7 @@ Save as `.ralph/paths.json`. Refs are optional reference material (read-only).
 
 ### TODO Format
 
-Claude maintains this structure:
+Claude maintains this structure (one task per iteration):
 
 ```markdown
 # Tasks
@@ -102,10 +103,13 @@ Claude maintains this structure:
 
 # Notes
 
-## Task Title - Done
+## Task 1 - Done
 - What was implemented
 - Files changed
 - Learnings: patterns discovered, gotchas encountered
+
+## Task 2 - Done
+- ...
 ```
 
 ## First Run (No .ralph/ in cwd)
