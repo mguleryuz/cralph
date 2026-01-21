@@ -113,26 +113,26 @@ export async function createStarterStructure(cwd: string): Promise<void> {
   const ralphDir = join(cwd, ".ralph");
   await mkdir(ralphDir, { recursive: true });
   
-  // Create refs/
-  const refsDir = join(cwd, "refs");
+  // Create .ralph/refs/
+  const refsDir = join(ralphDir, "refs");
   await mkdir(refsDir, { recursive: true });
-  consola.info("Created refs/ directory");
+  consola.info("Created .ralph/refs/ directory");
   
-  // Create rule.md
-  const rulePath = join(cwd, "rule.md");
+  // Create .ralph/rule.md
+  const rulePath = join(ralphDir, "rule.md");
   await Bun.write(rulePath, STARTER_RULE);
-  consola.info("Created rule.md with starter template");
+  consola.info("Created .ralph/rule.md with starter template");
   
   // Create .ralph/paths.json with default config
   const pathsConfig = {
-    refs: ["./refs"],
-    rule: "./rule.md",
+    refs: ["./.ralph/refs"],
+    rule: "./.ralph/rule.md",
     output: ".",
   };
   await Bun.write(join(ralphDir, "paths.json"), JSON.stringify(pathsConfig, null, 2));
   consola.info("Created .ralph/paths.json");
   
-  consola.box("1. Add source files to refs/\n2. Edit rule.md with your instructions\n3. Run cralph again");
+  consola.box("1. Add source files to .ralph/refs/\n2. Edit .ralph/rule.md with your instructions\n3. Run cralph again");
 }
 
 /**
@@ -177,7 +177,7 @@ export async function selectRefs(cwd: string, defaults?: string[]): Promise<stri
   return selected as string[];
 }
 
-const STARTER_RULE = `I want a simple ui with a red button
+const STARTER_RULE = `I want a file named hello.txt
 `;
 
 /**

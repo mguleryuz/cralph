@@ -7,10 +7,10 @@
 Claude in a loop. Give it a rule, let it cook.
 
 ```
-rule.md ──loop──> ./
-           │      (output)
-           │
-        refs/ (optional)
+.ralph/
+├── rule.md ──loop──> ./
+├── refs/             (output)
+└── TODO.md
 ```
 
 ## What is Ralph?
@@ -70,8 +70,8 @@ cralph --yes
 
 ```json
 {
-  "refs": ["./refs"],
-  "rule": "./rule.md",
+  "refs": ["./.ralph/refs"],
+  "rule": "./.ralph/rule.md",
   "output": "."
 }
 ```
@@ -83,6 +83,8 @@ Save as `.ralph/paths.json`. Refs are optional reference material (read-only).
 | File | Description |
 |------|-------------|
 | `.ralph/paths.json` | Configuration |
+| `.ralph/rule.md` | Your instructions for Claude |
+| `.ralph/refs/` | Optional reference material (read-only) |
 | `.ralph/TODO.md` | Task tracking (updated by Claude) |
 | `.ralph/ralph.log` | Session log |
 | `~/.cralph/auth-cache.json` | Auth cache (6h TTL) |
@@ -105,13 +107,13 @@ Any relevant context
 ## First Run (Empty Directory)
 
 ```
-ℹ Created refs/ directory
-ℹ Created rule.md with starter template
+ℹ Created .ralph/refs/ directory
+ℹ Created .ralph/rule.md with starter template
 ℹ Created .ralph/paths.json
 
 ╭──────────────────────────────────────────────╮
-│ 1. Add source files to refs/                 │
-│ 2. Edit rule.md with your instructions       │
+│ 1. Add source files to .ralph/refs/          │
+│ 2. Edit .ralph/rule.md with your instructions│
 │ 3. Run cralph again                          │
 ╰──────────────────────────────────────────────╯
 ```

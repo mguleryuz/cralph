@@ -1,2 +1,0 @@
-This is a sample reference file for testing.
-It contains minimal content to keep tests lightweight.
