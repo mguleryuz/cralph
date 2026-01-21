@@ -1,5 +1,9 @@
 # cralph
 
+<p align="center">
+  <img src="assets/ralph.png" alt="Ralph cooking" width="500">
+</p>
+
 Claude in a loop. Point at refs, give it rules, let it cook.
 
 ```
