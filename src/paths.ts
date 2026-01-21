@@ -47,9 +47,9 @@ async function askSelectionMode(label: string): Promise<PathSelectionMode> {
   const mode = await consola.prompt(`How would you like to specify ${label}?`, {
     type: "select",
     options: [
-      { label: "Select from current directory", value: "select" },
-      { label: "Enter path manually", value: "manual" },
-      { label: "Use paths file", value: "file" },
+      { label: "📂 Select from current directory", value: "select", hint: "Browse and pick" },
+      { label: "✏️  Enter path manually", value: "manual", hint: "Type the path" },
+      { label: "📄 Use paths file", value: "file", hint: "Load from JSON" },
     ],
   });
 
@@ -81,7 +81,7 @@ export async function selectRefs(cwd: string): Promise<string[]> {
   if (mode === "manual") {
     const input = await consola.prompt(
       "Enter refs paths (comma-separated):",
-      { type: "text" }
+      { type: "text", placeholder: "./src, ./lib" }
     );
     if (typeof input === "symbol") throw new Error("Selection cancelled");
     return input
@@ -99,7 +99,7 @@ export async function selectRefs(cwd: string): Promise<string[]> {
 
     const selected = await consola.prompt("Select refs directories:", {
       type: "multiselect",
-      options: dirs.map((d) => ({ label: d, value: d })),
+      options: dirs.map((d) => ({ label: `📁 ${d}`, value: d, hint: "source" })),
     });
 
     if (typeof selected === "symbol") throw new Error("Selection cancelled");
@@ -119,6 +119,7 @@ export async function selectRules(cwd: string): Promise<string> {
   if (mode === "manual") {
     const input = await consola.prompt("Enter rules file path:", {
       type: "text",
+      placeholder: "./rules.md",
     });
     if (typeof input === "symbol") throw new Error("Selection cancelled");
     return resolve(cwd, input.trim());
@@ -133,8 +134,9 @@ export async function selectRules(cwd: string): Promise<string> {
 
     // Show relative paths for readability
     const options = files.map((f) => ({
-      label: f.replace(cwd + "/", ""),
+      label: `📄 ${f.replace(cwd + "/", "")}`,
       value: f,
+      hint: f.endsWith(".mdc") ? "cursor rules" : "markdown",
     }));
 
     const selected = await consola.prompt("Select rules file:", {
@@ -167,8 +169,8 @@ export async function selectOutput(cwd: string): Promise<string> {
   if (mode === "select") {
     const dirs = await listDirectories(cwd);
     const options = [
-      { label: "(create new)", value: "__new__" },
-      ...dirs.map((d) => ({ label: d, value: d })),
+      { label: "✨ Create new directory", value: "__new__", hint: "Will be created" },
+      ...dirs.map((d) => ({ label: `📁 ${d}`, value: d })),
     ];
 
     const selected = await consola.prompt("Select output directory:", {

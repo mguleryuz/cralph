@@ -85,6 +85,23 @@ async function countRefs(refs: string[]): Promise<number> {
   return count;
 }
 
+// Track current subprocess for cleanup
+let currentProc: ReturnType<typeof Bun.spawn> | null = null;
+
+/**
+ * Kill any running subprocess on exit
+ */
+export function cleanupSubprocess() {
+  if (currentProc) {
+    try {
+      currentProc.kill();
+    } catch {
+      // Process may have already exited
+    }
+    currentProc = null;
+  }
+}
+
 /**
  * Run a single Claude iteration
  */
@@ -105,11 +122,15 @@ async function runIteration(
     stderr: "pipe",
     cwd,
   });
+  
+  currentProc = proc;
 
   // Collect output
   const stdout = await new Response(proc.stdout).text();
   const stderr = await new Response(proc.stderr).text();
   const exitCode = await proc.exited;
+  
+  currentProc = null;
 
   const output = stdout + stderr;
 

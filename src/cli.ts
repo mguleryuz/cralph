@@ -11,8 +11,33 @@ import {
   selectRules,
   selectOutput,
 } from "./paths";
-import { run } from "./runner";
+import { run, cleanupSubprocess } from "./runner";
 import type { RalphConfig } from "./types";
+
+const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
+
+// Graceful shutdown on Ctrl+C
+function setupGracefulExit() {
+  process.on("SIGINT", () => {
+    cleanupSubprocess();
+    console.log("\n");
+    consola.info("Cancelled.");
+    process.exit(0);
+  });
+}
+
+function showKeybindings() {
+  console.log();
+  console.log(dim("─".repeat(50)));
+  console.log(
+    dim("  ↑/↓") + " Navigate  " +
+    dim("Space") + " Toggle  " +
+    dim("Enter") + " Confirm  " +
+    dim("Ctrl+C") + " Cancel"
+  );
+  console.log(dim("─".repeat(50)));
+  console.log();
+}
 
 const main = defineCommand({
   meta: {
@@ -24,25 +49,40 @@ const main = defineCommand({
     refs: {
       type: "string",
       description: "Comma-separated refs paths (source material)",
+      valueHint: "path1,path2",
+      alias: "r",
       required: false,
     },
     rules: {
       type: "string",
       description: "Path to rules file (.mdc or .md)",
+      valueHint: "rules.md",
+      alias: "u",
       required: false,
     },
     output: {
       type: "string",
-      description: "Output directory",
+      description: "Output directory where results will be written",
+      valueHint: "./output",
+      alias: "o",
       required: false,
     },
     "paths-file": {
       type: "string",
       description: "Path to configuration file (JSON)",
+      valueHint: "ralph.paths.json",
+      alias: "p",
+      required: false,
+    },
+    help: {
+      type: "boolean",
+      description: "Show this help message",
+      alias: "h",
       required: false,
     },
   },
   async run({ args }) {
+    setupGracefulExit();
     const cwd = process.cwd();
     let config: RalphConfig;
 
@@ -68,7 +108,8 @@ const main = defineCommand({
       }
       // Interactive mode - some or no args provided
       else {
-        consola.info("Interactive configuration mode\n");
+        consola.info("Interactive configuration mode");
+        showKeybindings();
 
         // Use provided args or prompt for missing ones
         let refs: string[];
@@ -120,6 +161,13 @@ const main = defineCommand({
       // Run the main loop
       await run(config);
     } catch (error) {
+      // Handle graceful cancellation
+      if (error instanceof Error && error.message.includes("cancelled")) {
+        console.log();
+        consola.info("Cancelled.");
+        process.exit(0);
+      }
+      
       if (error instanceof Error) {
         consola.error(error.message);
       } else {
