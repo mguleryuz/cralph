@@ -9,14 +9,22 @@ import { setCurrentProcess, throwIfCancelled } from "./state";
 const COMPLETION_SIGNAL = "<promise>COMPLETE</promise>";
 const AUTH_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
-const INITIAL_TODO_CONTENT = `# Tasks
+const INITIAL_TODO_CONTENT = `# Patterns
+
+_None yet - add reusable patterns discovered during work_
+
+---
+
+# Tasks
 
 - [ ] Task 1
 - [ ] Task 2
 
+---
+
 # Notes
 
-_None yet_
+_Append progress and learnings here after each iteration_
 `;
 
 /**
