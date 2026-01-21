@@ -2,6 +2,11 @@ import { consola } from "consola";
 import { resolve, join } from "path";
 import { readdir, stat, mkdir } from "fs/promises";
 import type { PathsFileConfig, RalphConfig } from "./types";
+import { isAccessError, shouldExcludeDir } from "./platform";
+import { isShuttingDown } from "./state";
+
+// Re-export for backwards compatibility
+export { isAccessError } from "./platform";
 
 // Dim text helper
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
@@ -17,41 +22,13 @@ async function listDirectories(basePath: string): Promise<string[]> {
       .filter((e) => e.isDirectory() && !e.name.startsWith("."))
       .map((e) => e.name);
   } catch (error) {
-    // Silently skip directories we can't access (EPERM, EACCES)
+    // Silently skip directories we can't access
     if (isAccessError(error)) {
       return [];
     }
     throw error;
   }
 }
-
-/**
- * Check if an error is a permission/access error
- */
-export function isAccessError(error: unknown): boolean {
-  if (error && typeof error === "object" && "code" in error) {
-    const code = (error as { code: string }).code;
-    return code === "EPERM" || code === "EACCES";
-  }
-  return false;
-}
-
-/**
- * Directories to exclude from listing
- */
-const EXCLUDED_DIRS = [
-  "node_modules",
-  "dist",
-  "build",
-  ".git",
-  ".next",
-  ".nuxt",
-  ".output",
-  "coverage",
-  "__pycache__",
-  "vendor",
-  ".cache",
-];
 
 /**
  * List directories recursively up to a certain depth
@@ -69,7 +46,7 @@ export async function listDirectoriesRecursive(
     try {
       entries = await readdir(dir, { withFileTypes: true });
     } catch (error) {
-      // Silently skip directories we can't access (EPERM, EACCES)
+      // Silently skip directories we can't access
       if (isAccessError(error)) {
         return;
       }
@@ -80,7 +57,7 @@ export async function listDirectoriesRecursive(
       // Skip hidden and excluded directories
       if (!entry.isDirectory()) continue;
       if (entry.name.startsWith(".")) continue;
-      if (EXCLUDED_DIRS.includes(entry.name)) continue;
+      if (shouldExcludeDir(entry.name)) continue;
       
       const fullPath = join(dir, entry.name);
       results.push(fullPath);
@@ -106,7 +83,7 @@ export async function listFilesRecursive(
     try {
       entries = await readdir(dir, { withFileTypes: true });
     } catch (error) {
-      // Silently skip directories we can't access (EPERM, EACCES)
+      // Silently skip directories we can't access
       if (isAccessError(error)) {
         return;
       }
@@ -118,7 +95,7 @@ export async function listFilesRecursive(
       if (entry.isDirectory()) {
         // Skip hidden and excluded directories
         if (entry.name.startsWith(".")) continue;
-        if (EXCLUDED_DIRS.includes(entry.name)) continue;
+        if (shouldExcludeDir(entry.name)) continue;
         await walk(fullPath);
       } else if (entry.isFile()) {
         if (extensions.some((ext) => entry.name.endsWith(ext))) {
@@ -179,27 +156,58 @@ export async function createStarterStructure(cwd: string): Promise<void> {
  * @param autoConfirm - If true, skip confirmation prompts
  */
 export async function selectRefs(cwd: string, defaults?: string[], autoConfirm?: boolean): Promise<string[]> {
+  // Check if .ralph/ exists in cwd - if not, offer to create starter structure
+  const ralphDir = join(cwd, ".ralph");
+  let ralphExists = false;
+  try {
+    await stat(ralphDir);
+    ralphExists = true;
+  } catch {
+    ralphExists = false;
+  }
+
+  if (!ralphExists) {
+    // Ask before creating starter structure (skip if autoConfirm)
+    if (!autoConfirm) {
+      console.log(CONTROLS);
+      const action = await consola.prompt(
+        `No .ralph/ found in ${cwd}`,
+        {
+          type: "select",
+          options: [
+            { label: "📦 Create starter structure", value: "create" },
+            { label: "⚙️  Configure manually", value: "manual" },
+          ],
+        }
+      );
+      
+      // Handle Ctrl+C (returns Symbol) or shutdown in progress or unexpected values
+      if (typeof action === "symbol" || isShuttingDown() || (action !== "create" && action !== "manual")) {
+        throw new Error("Selection cancelled");
+      }
+      
+      if (action === "create") {
+        // Double-check we're not shutting down before executing
+        if (isShuttingDown()) {
+          throw new Error("Selection cancelled");
+        }
+        await createStarterStructure(cwd);
+        process.exit(0);
+      }
+      
+      // action === "manual" - continue to directory selection
+    } else {
+      // Auto-confirm mode: create starter structure
+      await createStarterStructure(cwd);
+      process.exit(0);
+    }
+  }
+
   // Get all directories up to 3 levels deep
   let allDirs = await listDirectoriesRecursive(cwd, 3);
   
   if (allDirs.length === 0) {
-    // Ask before creating starter structure (skip if autoConfirm)
-    if (!autoConfirm) {
-      const confirm = await consola.prompt(
-        `No directories found. Create starter structure in ${cwd}?`,
-        {
-          type: "confirm",
-          initial: true,
-        }
-      );
-      
-      if (confirm !== true) {
-        throw new Error("Setup cancelled");
-      }
-    }
-    
-    await createStarterStructure(cwd);
-    process.exit(0);
+    throw new Error("No directories found to select from");
   }
 
   // Convert to relative paths for display

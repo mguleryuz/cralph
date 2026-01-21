@@ -36,7 +36,7 @@ bun add -g cralph
 ## Quick Start
 
 ```bash
-# In an empty directory - creates starter structure
+# In any directory without .ralph/ - creates starter structure
 cralph
 
 # Edit rule.md with your instructions, then run again
@@ -59,10 +59,11 @@ cralph --yes
 ## How It Works
 
 1. Checks Claude CLI auth (cached for 6 hours)
-2. Loads config from `.ralph/paths.json`
-3. Runs `claude -p --dangerously-skip-permissions` in a loop
-4. Claude updates `.ralph/TODO.md` after each iteration
-5. Stops when Claude outputs `<promise>COMPLETE</promise>`
+2. Looks for `.ralph/` in current directory only (not subdirectories)
+3. Loads config from `.ralph/paths.json` or creates starter structure
+4. Runs `claude -p --dangerously-skip-permissions` in a loop
+5. Claude updates `.ralph/TODO.md` after each iteration
+6. Stops when Claude outputs `<promise>COMPLETE</promise>`
 
 ## Config
 
@@ -102,23 +103,31 @@ Claude maintains this structure:
 Any relevant context
 ```
 
-## First Run (Empty Directory)
+## First Run (No .ralph/ in cwd)
 
 ```
-? No directories found. Create starter structure in /path/to/dir? (Y/n)
+❯ No .ralph/ found in /path/to/dir
+● 📦 Create starter structure
+○ ⚙️  Configure manually
+```
 
+Select **Create starter structure** to generate the default config:
+
+```
 ℹ Created .ralph/refs/ directory
 ℹ Created .ralph/rule.md with starter template
 ℹ Created .ralph/paths.json
 
-╭──────────────────────────────────────────────╮
-│ 1. Add source files to .ralph/refs/          │
-│ 2. Edit .ralph/rule.md with your instructions│
-│ 3. Run cralph again                          │
-╰──────────────────────────────────────────────╯
+╭─────────────────────────────────────────────────╮
+│  1. Add source files to .ralph/refs/            │
+│  2. Edit .ralph/rule.md with your instructions  │
+│  3. Run cralph again                            │
+╰─────────────────────────────────────────────────╯
 ```
 
-Use `--yes` to skip confirmation (for CI/automation).
+Select **Configure manually** to skip starter creation and pick your own refs/rule/output.
+
+Use `--yes` to auto-create starter structure (for CI/automation).
 
 ## Prompts
 
@@ -140,11 +149,17 @@ Use `--yes` to skip confirmation (for CI/automation).
 - **Enter** - Confirm
 - **Ctrl+C** - Exit
 
-## Platform Notes
+## Platform Support
 
-### macOS Protected Directories
+cralph works on **macOS**, **Linux**, and **Windows** with platform-specific handling:
 
-cralph gracefully handles macOS permission errors (`EPERM`, `EACCES`) when scanning directories. Protected locations like `~/Pictures/Photo Booth Library` or iCloud folders are silently skipped, allowing the CLI to run from any directory including root (`/`).
+| Platform | Protected Directories Skipped |
+|----------|------------------------------|
+| macOS    | Library, Photos Library, Photo Booth Library |
+| Linux    | lost+found, proc, sys |
+| Windows  | System Volume Information, $Recycle.Bin, Windows |
+
+Permission errors (`EPERM`, `EACCES`) are handled gracefully on all platforms, allowing the CLI to run from any directory.
 
 ## Testing
 
@@ -152,7 +167,7 @@ cralph gracefully handles macOS permission errors (`EPERM`, `EACCES`) when scann
 bun test
 ```
 
-- **Unit tests** - Config, prompt building, CLI, access error handling
+- **Unit tests** - Config, prompt building, CLI, access error handling, platform detection, shutdown state
 - **E2E tests** - Full loop with Claude (requires auth)
 
 ## Requirements

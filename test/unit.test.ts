@@ -1,4 +1,4 @@
-import { test, expect, describe, afterAll, beforeAll } from "bun:test";
+import { test, expect, describe, afterAll, beforeAll, beforeEach } from "bun:test";
 import { resolve, join } from "path";
 import { rm, mkdir } from "fs/promises";
 import { tmpdir } from "os";
@@ -6,11 +6,22 @@ import { tmpdir } from "os";
 import { 
   loadPathsFile, 
   validateConfig, 
-  createStarterStructure, 
-  isAccessError,
+  createStarterStructure,
   listDirectoriesRecursive,
   listFilesRecursive,
 } from "../src/paths";
+import { 
+  isAccessError, 
+  getPlatform, 
+  getPlatformConfig,
+  shouldExcludeDir,
+  EXCLUDED_DIRS,
+} from "../src/platform";
+import {
+  setShuttingDown,
+  isShuttingDown,
+  resetShutdownState,
+} from "../src/state";
 import { createPrompt, buildPrompt } from "../src/prompt";
 import type { RalphConfig } from "../src/types";
 
@@ -253,5 +264,78 @@ describe("access error handling", () => {
     
     expect(mdFiles.every(f => f.endsWith(".md"))).toBe(true);
     expect(jsonFiles.every(f => f.endsWith(".json"))).toBe(true);
+  });
+});
+
+describe("platform", () => {
+  test("getPlatform returns valid platform", () => {
+    const platform = getPlatform();
+    expect(["darwin", "linux", "win32", "unknown"]).toContain(platform);
+  });
+
+  test("getPlatformConfig returns config for current platform", () => {
+    const config = getPlatformConfig();
+    expect(config).toBeDefined();
+    expect(config.accessErrorCodes).toBeArray();
+    expect(config.accessErrorCodes).toContain("EPERM");
+    expect(config.accessErrorCodes).toContain("EACCES");
+    expect(config.systemExcludedDirs).toBeArray();
+  });
+
+  test("EXCLUDED_DIRS contains common project directories", () => {
+    expect(EXCLUDED_DIRS).toContain("node_modules");
+    expect(EXCLUDED_DIRS).toContain("dist");
+    expect(EXCLUDED_DIRS).toContain(".git");
+    expect(EXCLUDED_DIRS).toContain("coverage");
+  });
+
+  test("shouldExcludeDir returns true for common excluded dirs", () => {
+    expect(shouldExcludeDir("node_modules")).toBe(true);
+    expect(shouldExcludeDir("dist")).toBe(true);
+    expect(shouldExcludeDir(".git")).toBe(true);
+  });
+
+  test("shouldExcludeDir returns false for regular directories", () => {
+    expect(shouldExcludeDir("src")).toBe(false);
+    expect(shouldExcludeDir("lib")).toBe(false);
+    expect(shouldExcludeDir("app")).toBe(false);
+  });
+});
+
+describe("state", () => {
+  // Reset state before each test to ensure isolation
+  beforeEach(() => {
+    resetShutdownState();
+  });
+
+  test("isShuttingDown returns false initially", () => {
+    expect(isShuttingDown()).toBe(false);
+  });
+
+  test("setShuttingDown sets shutdown state to true", () => {
+    expect(isShuttingDown()).toBe(false);
+    setShuttingDown();
+    expect(isShuttingDown()).toBe(true);
+  });
+
+  test("isShuttingDown remains true after being set", () => {
+    setShuttingDown();
+    expect(isShuttingDown()).toBe(true);
+    // Calling again should still be true
+    expect(isShuttingDown()).toBe(true);
+  });
+
+  test("resetShutdownState resets state to false", () => {
+    setShuttingDown();
+    expect(isShuttingDown()).toBe(true);
+    resetShutdownState();
+    expect(isShuttingDown()).toBe(false);
+  });
+
+  test("multiple setShuttingDown calls are idempotent", () => {
+    setShuttingDown();
+    setShuttingDown();
+    setShuttingDown();
+    expect(isShuttingDown()).toBe(true);
   });
 });

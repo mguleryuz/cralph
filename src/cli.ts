@@ -15,28 +15,28 @@ import {
 } from "./paths";
 import { run, cleanupSubprocess, checkClaudeAuth } from "./runner";
 import type { RalphConfig } from "./types";
+import { setShuttingDown, isShuttingDown } from "./state";
 
 // Graceful shutdown on Ctrl+C
 function setupGracefulExit() {
-  let shuttingDown = false;
-  
   process.on("SIGINT", () => {
-    if (shuttingDown) {
+    if (isShuttingDown()) {
       // Force exit on second Ctrl+C
-      process.exit(1);
+      Bun.exit(1);
     }
-    shuttingDown = true;
+    setShuttingDown();
     cleanupSubprocess();
     console.log("\n");
     consola.info("Cancelled.");
-    // Use setImmediate to ensure output is flushed
-    setImmediate(() => process.exit(0));
+    // Use Bun.exit for immediate termination
+    Bun.exit(0);
   });
   
   // Also handle SIGTERM
   process.on("SIGTERM", () => {
+    setShuttingDown();
     cleanupSubprocess();
-    process.exit(0);
+    Bun.exit(0);
   });
 }
 
