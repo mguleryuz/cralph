@@ -38,10 +38,10 @@ npm install -g cralph
 ## Usage
 
 ```bash
-# Run - auto-detects ralph.paths.json in cwd
+# Run - auto-detects .ralph/paths.json in cwd
 cralph
 
-# First run (no config) - interactive mode generates ralph.paths.json
+# First run (no config) - interactive mode generates .ralph/paths.json
 cralph
 
 # Override with flags
@@ -68,20 +68,21 @@ Simple multiselect for all paths:
 }
 ```
 
-Name it `ralph.paths.json` and cralph auto-detects it. Output is typically `.` (current directory) since you'll run cralph in your repo.
+Save as `.ralph/paths.json` and cralph auto-detects it. Output is typically `.` (current directory) since you'll run cralph in your repo.
 
 ## How It Works
 
-1. Reads your source material from `refs/`
-2. Injects your rules into the prompt
-3. Runs `claude -p --dangerously-skip-permissions` in a loop
-4. Stops when Claude outputs `<promise>COMPLETE</promise>`
+1. Checks if Claude CLI is authenticated (prompts to login if not)
+2. Reads your source material from `refs/`
+3. Injects your rule into the prompt
+4. Runs `claude -p --dangerously-skip-permissions` in a loop
+5. Stops when Claude outputs `<promise>COMPLETE</promise>`
 
 ## Expected Behavior
 
 **Auto-detect existing config:**
 ```
-❯ Found ralph.paths.json. What would you like to do?
+❯ Found .ralph/paths.json. What would you like to do?
 ● 🚀 Run with this config
 ○ ✏️  Edit configuration
 ```
@@ -109,8 +110,8 @@ Name it `ralph.paths.json` and cralph auto-detects it. Output is typically `.` (
 
 **Save config after selection:**
 ```
-? Save configuration to ralph.paths.json? (Y/n)
-✔ Saved ralph.paths.json
+? Save configuration to .ralph/paths.json? (Y/n)
+✔ Saved .ralph/paths.json
 ```
 
 **Cancellation:**

@@ -7,6 +7,56 @@ import { createPrompt } from "./prompt";
 const COMPLETION_SIGNAL = "<promise>COMPLETE</promise>";
 
 /**
+ * Check if Claude CLI is authenticated by sending a minimal test prompt
+ */
+export async function checkClaudeAuth(): Promise<boolean> {
+  try {
+    // Send a minimal prompt to test auth
+    const proc = Bun.spawn(["claude", "-p"], {
+      stdin: new Blob(["Reply with just 'ok'"]),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+    const exitCode = await proc.exited;
+    
+    const output = stdout + stderr;
+    
+    // Check for auth errors
+    if (output.includes("authentication_error") || 
+        output.includes("OAuth token has expired") ||
+        output.includes("Please run /login") ||
+        output.includes("401")) {
+      return false;
+    }
+    
+    // If exit code is 0, auth is working
+    return exitCode === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Run Claude login flow
+ */
+export async function runClaudeLogin(): Promise<boolean> {
+  consola.info("Opening Claude login...\n");
+  
+  // Run claude login interactively
+  const proc = Bun.spawn(["claude", "/login"], {
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  
+  const exitCode = await proc.exited;
+  return exitCode === 0;
+}
+
+/**
  * Initialize the runner state and log file
  */
 async function initRunner(outputDir: string): Promise<RunnerState> {

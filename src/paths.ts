@@ -223,33 +223,30 @@ export async function selectOutput(cwd: string, defaultOutput?: string): Promise
  * Returns: { action: "run", path: string } | { action: "edit" } | null
  */
 export async function checkForPathsFile(cwd: string): Promise<{ action: "run"; path: string } | { action: "edit" } | null> {
-  const candidates = ["ralph.paths.json", ".ralph.paths.json", "paths.json"];
-
-  for (const candidate of candidates) {
-    const filePath = join(cwd, candidate);
-    const file = Bun.file(filePath);
-    if (await file.exists()) {
-      console.log(CONTROLS);
-      const action = await consola.prompt(
-        `Found ${candidate}. What would you like to do?`,
-        {
-          type: "select",
-          options: [
-            { label: "🚀 Run with this config", value: "run" },
-            { label: "✏️  Edit configuration", value: "edit" },
-          ],
-        }
-      );
-      
-      if (typeof action === "symbol") {
-        throw new Error("Selection cancelled");
+  const filePath = join(cwd, ".ralph", "paths.json");
+  const file = Bun.file(filePath);
+  
+  if (await file.exists()) {
+    console.log(CONTROLS);
+    const action = await consola.prompt(
+      `Found .ralph/paths.json. What would you like to do?`,
+      {
+        type: "select",
+        options: [
+          { label: "🚀 Run with this config", value: "run" },
+          { label: "✏️  Edit configuration", value: "edit" },
+        ],
       }
-      
-      if (action === "run") {
-        return { action: "run", path: filePath };
-      }
-      return { action: "edit" };
+    );
+    
+    if (typeof action === "symbol") {
+      throw new Error("Selection cancelled");
     }
+    
+    if (action === "run") {
+      return { action: "run", path: filePath };
+    }
+    return { action: "edit" };
   }
 
   return null;

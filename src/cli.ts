@@ -2,7 +2,8 @@
 
 import { defineCommand, runMain } from "citty";
 import { consola } from "consola";
-import { resolve } from "path";
+import { resolve, join } from "path";
+import { mkdir } from "fs/promises";
 import {
   buildConfig,
   loadPathsFile,
@@ -12,7 +13,7 @@ import {
   selectOutput,
   checkForPathsFile,
 } from "./paths";
-import { run, cleanupSubprocess } from "./runner";
+import { run, cleanupSubprocess, checkClaudeAuth, runClaudeLogin } from "./runner";
 import type { RalphConfig } from "./types";
 
 // Graceful shutdown on Ctrl+C
@@ -80,6 +81,34 @@ const main = defineCommand({
     let config: RalphConfig;
 
     try {
+      // Check Claude authentication first - before any prompts
+      consola.start("Checking Claude authentication...");
+      const isAuthed = await checkClaudeAuth();
+      
+      if (!isAuthed) {
+        consola.warn("Claude CLI is not authenticated");
+        
+        const shouldLogin = await consola.prompt("Would you like to log in now?", {
+          type: "confirm",
+          initial: true,
+        });
+        
+        if (shouldLogin !== true) {
+          consola.info("Run 'claude /login' to authenticate, then try again.");
+          process.exit(0);
+        }
+        
+        const loginSuccess = await runClaudeLogin();
+        if (!loginSuccess) {
+          consola.error("Login failed. Please try 'claude /login' manually.");
+          process.exit(1);
+        }
+        
+        consola.success("Logged in successfully!\n");
+      } else {
+        consola.success("Claude authenticated");
+      }
+
       // Check for existing paths file in cwd
       const pathsFileResult = await checkForPathsFile(cwd);
       
@@ -97,19 +126,15 @@ const main = defineCommand({
         let existingConfig: RalphConfig | null = null;
         if (pathsFileResult?.action === "edit") {
           consola.info("Edit configuration");
-          const candidates = ["ralph.paths.json", ".ralph.paths.json", "paths.json"];
-          for (const candidate of candidates) {
-            const filePath = resolve(cwd, candidate);
-            const file = Bun.file(filePath);
-            if (await file.exists()) {
-              const loaded = await loadPathsFile(filePath);
-              existingConfig = {
-                refs: loaded.refs.map((r) => resolve(cwd, r)),
-                rule: resolve(cwd, loaded.rule),
-                output: resolve(cwd, loaded.output),
-              };
-              break;
-            }
+          const filePath = join(cwd, ".ralph", "paths.json");
+          const file = Bun.file(filePath);
+          if (await file.exists()) {
+            const loaded = await loadPathsFile(filePath);
+            existingConfig = {
+              refs: loaded.refs.map((r) => resolve(cwd, r)),
+              rule: resolve(cwd, loaded.rule),
+              output: resolve(cwd, loaded.output),
+            };
           }
         } else {
           consola.info("Interactive configuration mode");
@@ -131,22 +156,25 @@ const main = defineCommand({
         config = { refs, rule, output };
 
         // Offer to save config
-        const saveConfig = await consola.prompt("Save configuration to ralph.paths.json?", {
+        const saveConfig = await consola.prompt("Save configuration to .ralph/paths.json?", {
           type: "confirm",
           initial: true,
         });
 
         if (saveConfig === true) {
+          const ralphDir = join(cwd, ".ralph");
+          await mkdir(ralphDir, { recursive: true });
+          
           const pathsConfig = {
             refs: config.refs.map((r) => "./" + r.replace(cwd + "/", "")),
             rule: "./" + config.rule.replace(cwd + "/", ""),
             output: config.output === cwd ? "." : "./" + config.output.replace(cwd + "/", ""),
           };
           await Bun.write(
-            resolve(cwd, "ralph.paths.json"),
+            join(ralphDir, "paths.json"),
             JSON.stringify(pathsConfig, null, 2)
           );
-          consola.success("Saved ralph.paths.json");
+          consola.success("Saved .ralph/paths.json");
         }
       }
 

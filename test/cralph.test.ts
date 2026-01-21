@@ -1,6 +1,6 @@
-import { test, expect, describe, afterAll } from "bun:test";
+import { test, expect, describe, afterAll, beforeAll } from "bun:test";
 import { resolve, join } from "path";
-import { rm } from "fs/promises";
+import { rm, mkdir } from "fs/promises";
 
 import { loadPathsFile, validateConfig } from "../src/paths";
 import { createPrompt, buildPrompt } from "../src/prompt";
@@ -10,28 +10,24 @@ const TEST_DIR = resolve(import.meta.dir);
 const REFS_DIR = join(TEST_DIR, "refs");
 const RULE_FILE = join(TEST_DIR, "rules.md");
 const OUTPUT_DIR = TEST_DIR; // Use current dir as output (.)
-const PATHS_FILE = join(TEST_DIR, "ralph.paths.json");
+const RALPH_DIR = join(TEST_DIR, ".ralph");
+const PATHS_FILE = join(RALPH_DIR, "paths.json");
 
-// Cleanup paths file after tests
-async function cleanupPathsFile() {
-  try {
-    await rm(PATHS_FILE);
-  } catch {
-    // File may not exist
-  }
-}
+// Ensure .ralph directory exists
+beforeAll(async () => {
+  await mkdir(RALPH_DIR, { recursive: true });
+});
 
 // Cleanup .ralph directory created during tests
 async function cleanupRalphDir() {
   try {
-    await rm(join(TEST_DIR, ".ralph"), { recursive: true });
+    await rm(RALPH_DIR, { recursive: true });
   } catch {
     // Directory may not exist
   }
 }
 
 afterAll(async () => {
-  await cleanupPathsFile();
   await cleanupRalphDir();
 });
 
@@ -217,7 +213,7 @@ describe("cli args parsing", () => {
     expect(stdout).toContain("--output");
   });
 
-  test("missing required args enters interactive mode (exits on no tty)", async () => {
+  test("CLI starts with auth check", async () => {
     const proc = Bun.spawn(["bun", "run", "src/cli.ts"], {
       cwd: resolve(TEST_DIR, ".."),
       stdout: "pipe",
@@ -228,12 +224,15 @@ describe("cli args parsing", () => {
     // Close stdin immediately to simulate non-interactive
     proc.stdin.end();
 
+    // Give it a moment to start
+    await new Promise((r) => setTimeout(r, 500));
+    proc.kill();
+
     const stdout = await new Response(proc.stdout).text();
     const stderr = await new Response(proc.stderr).text();
     const output = stdout + stderr;
     
-    // Should show keybindings (part of interactive mode)
-    expect(output).toContain("Navigate");
-    expect(output).toContain("refs");
+    // Should show auth check message at start
+    expect(output).toContain("Checking Claude authentication");
   });
 });
