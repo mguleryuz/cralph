@@ -4,6 +4,7 @@ import { mkdir } from "fs/promises";
 import { homedir } from "os";
 import type { RalphConfig, RunnerState, IterationResult } from "./types";
 import { createPrompt } from "./prompt";
+import { setCurrentProcess } from "./state";
 
 const COMPLETION_SIGNAL = "<promise>COMPLETE</promise>";
 const AUTH_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
@@ -175,23 +176,6 @@ async function log(state: RunnerState, message: string): Promise<void> {
   await Bun.write(state.logFile, existing + logLine);
 }
 
-// Track current subprocess for cleanup
-let currentProc: ReturnType<typeof Bun.spawn> | null = null;
-
-/**
- * Kill any running subprocess on exit
- */
-export function cleanupSubprocess() {
-  if (currentProc) {
-    try {
-      currentProc.kill();
-    } catch {
-      // Process may have already exited
-    }
-    currentProc = null;
-  }
-}
-
 /**
  * Run a single Claude iteration
  */
@@ -213,14 +197,14 @@ async function runIteration(
     cwd,
   });
   
-  currentProc = proc;
+  setCurrentProcess(proc);
 
   // Collect output
   const stdout = await new Response(proc.stdout).text();
   const stderr = await new Response(proc.stderr).text();
   const exitCode = await proc.exited;
   
-  currentProc = null;
+  setCurrentProcess(null);
 
   const output = stdout + stderr;
 

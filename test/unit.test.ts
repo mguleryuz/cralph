@@ -9,6 +9,8 @@ import {
   createStarterStructure,
   listDirectoriesRecursive,
   listFilesRecursive,
+  resolvePathsConfig,
+  toRelativePath,
 } from "../src/paths";
 import { 
   isAccessError, 
@@ -95,6 +97,29 @@ describe("paths", () => {
     };
 
     await expect(validateConfig(config)).rejects.toThrow("Rule file does not exist");
+  });
+
+  test("resolvePathsConfig converts relative to absolute paths", () => {
+    const loaded = {
+      refs: ["./.ralph/refs", "./src"],
+      rule: "./.ralph/rule.md",
+      output: ".",
+    };
+    const cwd = "/home/user/project";
+    
+    const resolved = resolvePathsConfig(loaded, cwd);
+    
+    expect(resolved.refs).toEqual(["/home/user/project/.ralph/refs", "/home/user/project/src"]);
+    expect(resolved.rule).toBe("/home/user/project/.ralph/rule.md");
+    expect(resolved.output).toBe("/home/user/project");
+  });
+
+  test("toRelativePath converts absolute to relative paths", () => {
+    const cwd = "/home/user/project";
+    
+    expect(toRelativePath("/home/user/project", cwd)).toBe(".");
+    expect(toRelativePath("/home/user/project/src", cwd)).toBe("./src");
+    expect(toRelativePath("/home/user/project/.ralph/refs", cwd)).toBe("./.ralph/refs");
   });
 });
 

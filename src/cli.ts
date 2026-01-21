@@ -5,17 +5,18 @@ import { consola } from "consola";
 import { resolve, join } from "path";
 import { mkdir } from "fs/promises";
 import {
-  buildConfig,
   loadPathsFile,
   validateConfig,
   selectRefs,
   selectRule,
   selectOutput,
   checkForPathsFile,
+  resolvePathsConfig,
+  toRelativePath,
 } from "./paths";
-import { run, cleanupSubprocess, checkClaudeAuth } from "./runner";
+import { run, checkClaudeAuth } from "./runner";
 import type { RalphConfig } from "./types";
-import { setShuttingDown, isShuttingDown } from "./state";
+import { setShuttingDown, isShuttingDown, cleanupSubprocess } from "./state";
 
 // Graceful shutdown on Ctrl+C
 function setupGracefulExit() {
@@ -109,11 +110,7 @@ const main = defineCommand({
         // Use existing config file
         consola.info(`Loading config from ${pathsFileResult.path}`);
         const loaded = await loadPathsFile(pathsFileResult.path);
-        config = {
-          refs: loaded.refs.map((r) => resolve(cwd, r)),
-          rule: resolve(cwd, loaded.rule),
-          output: resolve(cwd, loaded.output),
-        };
+        config = resolvePathsConfig(loaded, cwd);
       } else {
         // Load existing config for edit mode defaults
         let existingConfig: RalphConfig | null = null;
@@ -123,11 +120,7 @@ const main = defineCommand({
           const file = Bun.file(filePath);
           if (await file.exists()) {
             const loaded = await loadPathsFile(filePath);
-            existingConfig = {
-              refs: loaded.refs.map((r) => resolve(cwd, r)),
-              rule: resolve(cwd, loaded.rule),
-              output: resolve(cwd, loaded.output),
-            };
+            existingConfig = resolvePathsConfig(loaded, cwd);
           }
         } else {
           consola.info("Interactive configuration mode");
@@ -159,9 +152,9 @@ const main = defineCommand({
           await mkdir(ralphDir, { recursive: true });
           
           const pathsConfig = {
-            refs: config.refs.map((r) => "./" + r.replace(cwd + "/", "")),
-            rule: "./" + config.rule.replace(cwd + "/", ""),
-            output: config.output === cwd ? "." : "./" + config.output.replace(cwd + "/", ""),
+            refs: config.refs.map((r) => toRelativePath(r, cwd)),
+            rule: toRelativePath(config.rule, cwd),
+            output: toRelativePath(config.output, cwd),
           };
           await Bun.write(
             join(ralphDir, "paths.json"),

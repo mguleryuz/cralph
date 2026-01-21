@@ -1,16 +1,46 @@
 import { consola } from "consola";
 import { resolve, join } from "path";
-import { readdir, stat, mkdir } from "fs/promises";
+import { readdir, stat, mkdir, type Dirent } from "fs/promises";
 import type { PathsFileConfig, RalphConfig } from "./types";
 import { isAccessError, shouldExcludeDir } from "./platform";
 import { isShuttingDown } from "./state";
 
-// Re-export for backwards compatibility
-export { isAccessError } from "./platform";
+// Starter rule template for new projects
+const STARTER_RULE = `I want a file named hello.txt
+`;
 
 // Dim text helper
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 const CONTROLS = dim("↑↓ Navigate • Space Toggle • Enter • Ctrl+C Exit");
+
+/**
+ * Convert a PathsFileConfig to a resolved RalphConfig
+ */
+export function resolvePathsConfig(loaded: PathsFileConfig, cwd: string): RalphConfig {
+  return {
+    refs: loaded.refs.map((r) => resolve(cwd, r)),
+    rule: resolve(cwd, loaded.rule),
+    output: resolve(cwd, loaded.output),
+  };
+}
+
+/**
+ * Convert an absolute path to a relative path for config storage
+ */
+export function toRelativePath(absolutePath: string, cwd: string): string {
+  if (absolutePath === cwd) return ".";
+  return "./" + absolutePath.replace(cwd + "/", "");
+}
+
+/**
+ * Check if a directory entry should be skipped during traversal
+ */
+function shouldSkipDirectory(entry: Dirent): boolean {
+  if (!entry.isDirectory()) return true;
+  if (entry.name.startsWith(".")) return true;
+  if (shouldExcludeDir(entry.name)) return true;
+  return false;
+}
 
 /**
  * List directories in a given path
@@ -54,10 +84,7 @@ export async function listDirectoriesRecursive(
     }
     
     for (const entry of entries) {
-      // Skip hidden and excluded directories
-      if (!entry.isDirectory()) continue;
-      if (entry.name.startsWith(".")) continue;
-      if (shouldExcludeDir(entry.name)) continue;
+      if (shouldSkipDirectory(entry)) continue;
       
       const fullPath = join(dir, entry.name);
       results.push(fullPath);
@@ -93,9 +120,7 @@ export async function listFilesRecursive(
     for (const entry of entries) {
       const fullPath = join(dir, entry.name);
       if (entry.isDirectory()) {
-        // Skip hidden and excluded directories
-        if (entry.name.startsWith(".")) continue;
-        if (shouldExcludeDir(entry.name)) continue;
+        if (shouldSkipDirectory(entry)) continue;
         await walk(fullPath);
       } else if (entry.isFile()) {
         if (extensions.some((ext) => entry.name.endsWith(ext))) {
@@ -239,9 +264,6 @@ export async function selectRefs(cwd: string, defaults?: string[], autoConfirm?:
   return selected as string[];
 }
 
-const STARTER_RULE = `I want a file named hello.txt
-`;
-
 /**
  * Prompt user to select a rule file
  */
@@ -378,28 +400,4 @@ export async function validateConfig(config: RalphConfig): Promise<void> {
   }
 
   // Output directory will be created if needed
-}
-
-/**
- * Interactive configuration builder
- */
-export async function buildConfig(cwd: string): Promise<RalphConfig> {
-  // Check for existing paths file first
-  const pathsFile = await checkForPathsFile(cwd);
-
-  if (pathsFile) {
-    const loaded = await loadPathsFile(pathsFile);
-    return {
-      refs: loaded.refs.map((r) => resolve(cwd, r)),
-      rule: resolve(cwd, loaded.rule),
-      output: resolve(cwd, loaded.output),
-    };
-  }
-
-  // Interactive selection
-  const refs = await selectRefs(cwd);
-  const rule = await selectRule(cwd);
-  const output = await selectOutput(cwd);
-
-  return { refs, rule, output };
 }
