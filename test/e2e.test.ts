@@ -40,8 +40,8 @@ describe("e2e", () => {
       return;
     }
 
-    // Run CLI in empty directory - should create starter and exit
-    const proc = Bun.spawn(["bun", "run", CLI_PATH], {
+    // Run CLI in empty directory with --yes to auto-confirm starter creation
+    const proc = Bun.spawn(["bun", "run", CLI_PATH, "--yes"], {
       cwd: TEST_DIR,
       stdout: "pipe",
       stderr: "pipe",

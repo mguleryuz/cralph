@@ -136,7 +136,7 @@ const main = defineCommand({
         // Interactive selection
         const refs = args.refs 
           ? args.refs.split(",").map((r) => resolve(cwd, r.trim()))
-          : await selectRefs(cwd, existingConfig?.refs);
+          : await selectRefs(cwd, existingConfig?.refs, args.yes);
         
         const rule = args.rule 
           ? resolve(cwd, args.rule)

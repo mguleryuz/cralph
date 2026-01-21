@@ -137,13 +137,28 @@ export async function createStarterStructure(cwd: string): Promise<void> {
 
 /**
  * Prompt user to select refs directories (simple multiselect)
+ * @param autoConfirm - If true, skip confirmation prompts
  */
-export async function selectRefs(cwd: string, defaults?: string[]): Promise<string[]> {
+export async function selectRefs(cwd: string, defaults?: string[], autoConfirm?: boolean): Promise<string[]> {
   // Get all directories up to 3 levels deep
   let allDirs = await listDirectoriesRecursive(cwd, 3);
   
   if (allDirs.length === 0) {
-    // Create starter structure and exit gracefully
+    // Ask before creating starter structure (skip if autoConfirm)
+    if (!autoConfirm) {
+      const confirm = await consola.prompt(
+        `No directories found. Create starter structure in ${cwd}?`,
+        {
+          type: "confirm",
+          initial: true,
+        }
+      );
+      
+      if (confirm !== true) {
+        throw new Error("Setup cancelled");
+      }
+    }
+    
     await createStarterStructure(cwd);
     process.exit(0);
   }

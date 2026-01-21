@@ -107,6 +107,8 @@ Any relevant context
 ## First Run (Empty Directory)
 
 ```
+? No directories found. Create starter structure in /path/to/dir? (Y/n)
+
 ℹ Created .ralph/refs/ directory
 ℹ Created .ralph/rule.md with starter template
 ℹ Created .ralph/paths.json
@@ -117,6 +119,8 @@ Any relevant context
 │ 3. Run cralph again                          │
 ╰──────────────────────────────────────────────╯
 ```
+
+Use `--yes` to skip confirmation (for CI/automation).
 
 ## Prompts
 
