@@ -1,9 +1,10 @@
 import { consola } from "consola";
 import { resolve, join } from "path";
-import { readdir, stat, mkdir, type Dirent } from "fs/promises";
+import { readdir, stat, mkdir } from "fs/promises";
+import type { Dirent } from "fs";
 import type { PathsFileConfig, RalphConfig } from "./types";
 import { isAccessError, shouldExcludeDir } from "./platform";
-import { isShuttingDown } from "./state";
+import { throwIfCancelled } from "./state";
 
 // Starter rule template for new projects
 const STARTER_RULE = `I want a file named hello.txt
@@ -199,6 +200,7 @@ export async function selectRefs(cwd: string, defaults?: string[], autoConfirm?:
         `No .ralph/ found in ${cwd}`,
         {
           type: "select",
+          cancel: "symbol",
           options: [
             { label: "📦 Create starter structure", value: "create" },
             { label: "⚙️  Configure manually", value: "manual" },
@@ -206,16 +208,9 @@ export async function selectRefs(cwd: string, defaults?: string[], autoConfirm?:
         }
       );
       
-      // Handle Ctrl+C (returns Symbol) or shutdown in progress or unexpected values
-      if (typeof action === "symbol" || isShuttingDown() || (action !== "create" && action !== "manual")) {
-        throw new Error("Selection cancelled");
-      }
+      throwIfCancelled(action);
       
       if (action === "create") {
-        // Double-check we're not shutting down before executing
-        if (isShuttingDown()) {
-          throw new Error("Selection cancelled");
-        }
         await createStarterStructure(cwd);
         process.exit(0);
       }
@@ -252,16 +247,19 @@ export async function selectRefs(cwd: string, defaults?: string[], autoConfirm?:
   console.log(CONTROLS);
   const selected = await consola.prompt("Select refs directories:", {
     type: "multiselect",
+    cancel: "symbol",
     options,
     initial: initialValues,
   });
 
-  // Handle cancel (symbol) or empty result
-  if (typeof selected === "symbol" || !selected || (Array.isArray(selected) && selected.length === 0)) {
+  // Handle cancel (symbol), shutdown, or empty result
+  throwIfCancelled(selected);
+  if (!selected || (Array.isArray(selected) && selected.length === 0)) {
     throw new Error("Selection cancelled");
   }
   
-  return selected as string[];
+  // Cast is safe: multiselect with string values returns string[]
+  return selected as unknown as string[];
 }
 
 /**
@@ -285,17 +283,18 @@ export async function selectRule(cwd: string, defaultRule?: string): Promise<str
     hint: f === defaultRule ? "current" : (f.endsWith(".mdc") ? "cursor rule" : "markdown"),
   }));
 
-  // Find index of default for initial selection
-  const initialIndex = defaultRule ? files.findIndex((f) => f === defaultRule) : 0;
+  // Find initial value for default selection
+  const initialValue = defaultRule && files.includes(defaultRule) ? defaultRule : files[0];
 
   console.log(CONTROLS);
   const selected = await consola.prompt("Select rule file:", {
     type: "select",
+    cancel: "symbol",
     options,
-    initial: initialIndex >= 0 ? initialIndex : 0,
+    initial: initialValue,
   });
 
-  if (typeof selected === "symbol") throw new Error("Selection cancelled");
+  throwIfCancelled(selected);
   return selected as string;
 }
 
@@ -317,21 +316,20 @@ export async function selectOutput(cwd: string, defaultOutput?: string): Promise
     })),
   ];
 
-  // Find initial index
-  let initialIndex = 0;
-  if (defaultDir) {
-    const idx = defaultDir === "." ? 0 : dirs.findIndex((d) => d === defaultDir) + 1;
-    if (idx >= 0) initialIndex = idx;
-  }
+  // Determine initial value for default selection
+  const initialValue = defaultDir && (defaultDir === "." || dirs.includes(defaultDir)) 
+    ? defaultDir 
+    : ".";
 
   console.log(CONTROLS);
   const selected = await consola.prompt("Select output directory:", {
     type: "select",
+    cancel: "symbol",
     options,
-    initial: initialIndex,
+    initial: initialValue,
   });
 
-  if (typeof selected === "symbol") throw new Error("Selection cancelled");
+  throwIfCancelled(selected);
 
   if (selected === ".") {
     return cwd;
@@ -360,6 +358,7 @@ export async function checkForPathsFile(cwd: string, autoRun?: boolean): Promise
       `Found .ralph/paths.json. What would you like to do?`,
       {
         type: "select",
+        cancel: "symbol",
         options: [
           { label: "🚀 Run with this config", value: "run" },
           { label: "✏️  Edit configuration", value: "edit" },
@@ -367,9 +366,7 @@ export async function checkForPathsFile(cwd: string, autoRun?: boolean): Promise
       }
     );
     
-    if (typeof action === "symbol") {
-      throw new Error("Selection cancelled");
-    }
+    throwIfCancelled(action);
     
     if (action === "run") {
       return { action: "run", path: filePath };

@@ -16,28 +16,30 @@ import {
 } from "./paths";
 import { run, checkClaudeAuth } from "./runner";
 import type { RalphConfig } from "./types";
-import { setShuttingDown, isShuttingDown, cleanupSubprocess } from "./state";
+import { setShuttingDown, isShuttingDown, cleanupSubprocess, throwIfCancelled } from "./state";
+import { checkClaudeInstallation } from "./platform";
 
 // Graceful shutdown on Ctrl+C
 function setupGracefulExit() {
+  const exit = (code: number) => process.exit(code);
+  
   process.on("SIGINT", () => {
     if (isShuttingDown()) {
       // Force exit on second Ctrl+C
-      Bun.exit(1);
+      exit(1);
     }
     setShuttingDown();
     cleanupSubprocess();
     console.log("\n");
     consola.info("Cancelled.");
-    // Use Bun.exit for immediate termination
-    Bun.exit(0);
+    exit(0);
   });
   
   // Also handle SIGTERM
   process.on("SIGTERM", () => {
     setShuttingDown();
     cleanupSubprocess();
-    Bun.exit(0);
+    exit(0);
   });
 }
 
@@ -88,7 +90,17 @@ const main = defineCommand({
     let config: RalphConfig;
 
     try {
-      // Check Claude authentication first - before any prompts
+      // Check Claude CLI is installed first
+      const claudeCheck = await checkClaudeInstallation();
+      
+      if (!claudeCheck.installed) {
+        consola.error("Claude CLI is not installed\n");
+        consola.box(claudeCheck.installInstructions);
+        consola.info("After installing, run cralph again.");
+        process.exit(1);
+      }
+      
+      // Check Claude authentication
       consola.start("Checking Claude authentication...");
       const isAuthed = await checkClaudeAuth();
       
@@ -144,8 +156,11 @@ const main = defineCommand({
         // Offer to save config
         const saveConfig = await consola.prompt("Save configuration to .ralph/paths.json?", {
           type: "confirm",
+          cancel: "symbol",
           initial: true,
         });
+        
+        throwIfCancelled(saveConfig);
 
         if (saveConfig === true) {
           const ralphDir = join(cwd, ".ralph");
@@ -179,8 +194,11 @@ const main = defineCommand({
       if (!args.yes) {
         const proceed = await consola.prompt("Start processing?", {
           type: "confirm",
+          cancel: "symbol",
           initial: true,
         });
+        
+        throwIfCancelled(proceed);
 
         if (proceed !== true) {
           consola.info("Cancelled.");

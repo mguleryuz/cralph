@@ -1,12 +1,16 @@
 /**
  * Global state shared across modules
- * 
+ *
  * This module provides centralized state management for:
  * - Graceful shutdown handling (Ctrl+C / SIGINT / SIGTERM)
+ * - Prompt cancellation detection
  * - Subprocess tracking for cleanup
  */
 
-// Shutdown state
+// ============================================================================
+// Shutdown State
+// ============================================================================
+
 let shuttingDown = false;
 
 /**
@@ -30,7 +34,28 @@ export function resetShutdownState(): void {
   shuttingDown = false;
 }
 
-// Subprocess tracking
+// ============================================================================
+// Prompt Cancellation
+// ============================================================================
+
+/**
+ * Check if a prompt result indicates cancellation and throw if so.
+ * Handles Symbol returns from consola prompts (when cancel: "symbol")
+ * and shutdown state.
+ *
+ * @param result - The result from a consola.prompt() call
+ * @throws Error with message "Selection cancelled" if cancelled
+ */
+export function throwIfCancelled(result: unknown): void {
+  if (typeof result === "symbol" || isShuttingDown()) {
+    throw new Error("Selection cancelled");
+  }
+}
+
+// ============================================================================
+// Subprocess Tracking
+// ============================================================================
+
 let currentProc: ReturnType<typeof Bun.spawn> | null = null;
 
 /**

@@ -1,6 +1,6 @@
 {
   "name": "cralph",
-  "version": "1.0.0-beta.2",
+  "version": "1.0.0-beta.3",
   "description": "Claude in a loop. Point at refs, give it a rule, let it cook.",
   "author": "mguleryuz",
   "license": "MIT",
@@ -30,7 +30,8 @@
     "assets"
   ],
   "scripts": {
-    "start": "bun run src/cli.ts"
+    "start": "bun run src/cli.ts",
+    "type-check": "tsgo --noEmit --pretty"
   },
   "devDependencies": {
     "@types/bun": "latest"

@@ -1,5 +1,7 @@
 // Re-export for programmatic usage
 export * from "./src/types";
-export { buildConfig, loadPathsFile, validateConfig } from "./src/paths";
+export { loadPathsFile, validateConfig, resolvePathsConfig, toRelativePath } from "./src/paths";
 export { createPrompt, buildPrompt } from "./src/prompt";
-export { run, cleanupSubprocess } from "./src/runner";
+export { run, checkClaudeAuth } from "./src/runner";
+export { cleanupSubprocess, setShuttingDown, isShuttingDown } from "./src/state";
+export { getPlatform, isClaudeInstalled, checkClaudeInstallation } from "./src/platform";

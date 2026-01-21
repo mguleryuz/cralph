@@ -4,7 +4,7 @@ import { mkdir } from "fs/promises";
 import { homedir } from "os";
 import type { RalphConfig, RunnerState, IterationResult } from "./types";
 import { createPrompt } from "./prompt";
-import { setCurrentProcess } from "./state";
+import { setCurrentProcess, throwIfCancelled } from "./state";
 
 const COMPLETION_SIGNAL = "<promise>COMPLETE</promise>";
 const AUTH_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
@@ -103,7 +103,6 @@ export async function checkClaudeAuth(): Promise<boolean> {
   }
 }
 
-
 /**
  * Check if the TODO file is in a clean/initial state
  */
@@ -150,9 +149,12 @@ Ralph Session: ${state.startTime.toISOString()}
       "Found existing TODO with progress. Reset to start fresh?",
       {
         type: "confirm",
+        cancel: "symbol",
         initial: true,
       }
     );
+    
+    throwIfCancelled(response);
     
     if (response === true) {
       await Bun.write(state.todoFile, INITIAL_TODO_CONTENT);

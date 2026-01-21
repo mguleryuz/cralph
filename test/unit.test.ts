@@ -3,31 +3,38 @@ import { resolve, join } from "path";
 import { rm, mkdir } from "fs/promises";
 import { tmpdir } from "os";
 
-import { 
-  loadPathsFile, 
-  validateConfig, 
+import {
+  loadPathsFile,
+  validateConfig,
   createStarterStructure,
   listDirectoriesRecursive,
   listFilesRecursive,
   resolvePathsConfig,
   toRelativePath,
 } from "../src/paths";
-import { 
-  isAccessError, 
-  getPlatform, 
+import {
+  isAccessError,
+  getPlatform,
   getPlatformConfig,
   shouldExcludeDir,
   EXCLUDED_DIRS,
+  isClaudeInstalled,
+  checkClaudeInstallation,
+  getClaudeInstallInstructions,
 } from "../src/platform";
 import {
   setShuttingDown,
   isShuttingDown,
   resetShutdownState,
+  throwIfCancelled,
 } from "../src/state";
 import { createPrompt, buildPrompt } from "../src/prompt";
 import type { RalphConfig } from "../src/types";
 
-// Use a temp directory for tests
+// ============================================================================
+// Test Setup
+// ============================================================================
+
 const TEST_DIR = join(tmpdir(), `cralph-test-${Date.now()}`);
 const RALPH_DIR = join(TEST_DIR, ".ralph");
 const REFS_DIR = join(RALPH_DIR, "refs");
@@ -35,16 +42,12 @@ const RULE_FILE = join(RALPH_DIR, "rule.md");
 const PATHS_FILE = join(RALPH_DIR, "paths.json");
 const TODO_FILE = join(RALPH_DIR, "TODO.md");
 
-// Setup test directory with starter structure
 beforeAll(async () => {
   await mkdir(TEST_DIR, { recursive: true });
   await createStarterStructure(TEST_DIR);
-  
-  // Override rule.md with test content
   await Bun.write(RULE_FILE, "# Test Rules\nDo something.");
 });
 
-// Cleanup test directory
 afterAll(async () => {
   try {
     await rm(TEST_DIR, { recursive: true });
@@ -53,87 +56,102 @@ afterAll(async () => {
   }
 });
 
+// ============================================================================
+// Path Configuration Tests
+// ============================================================================
+
 describe("paths", () => {
-  test("loadPathsFile loads valid JSON config", async () => {
-    const config = await loadPathsFile(PATHS_FILE);
-    
-    expect(config).toBeDefined();
-    expect(config.refs).toBeArray();
-    expect(config.refs).toContain("./.ralph/refs");
-    expect(config.rule).toBe("./.ralph/rule.md");
-    expect(config.output).toBe(".");
+  describe("loadPathsFile", () => {
+    test("loads valid JSON config", async () => {
+      const config = await loadPathsFile(PATHS_FILE);
+
+      expect(config).toBeDefined();
+      expect(config.refs).toBeArray();
+      expect(config.refs).toContain("./.ralph/refs");
+      expect(config.rule).toBe("./.ralph/rule.md");
+      expect(config.output).toBe(".");
+    });
+
+    test("throws for missing file", async () => {
+      await expect(loadPathsFile("/nonexistent/path.json")).rejects.toThrow();
+    });
   });
 
-  test("loadPathsFile throws for missing file", async () => {
-    expect(loadPathsFile("/nonexistent/path.json")).rejects.toThrow();
+  describe("validateConfig", () => {
+    test("passes for valid config", async () => {
+      const config: RalphConfig = {
+        refs: [REFS_DIR],
+        rule: RULE_FILE,
+        output: TEST_DIR,
+      };
+      await expect(validateConfig(config)).resolves.toBeUndefined();
+    });
+
+    test("throws for missing refs", async () => {
+      const config: RalphConfig = {
+        refs: ["/nonexistent/refs"],
+        rule: RULE_FILE,
+        output: TEST_DIR,
+      };
+      await expect(validateConfig(config)).rejects.toThrow("Refs path does not exist");
+    });
+
+    test("throws for missing rule file", async () => {
+      const config: RalphConfig = {
+        refs: [REFS_DIR],
+        rule: "/nonexistent/rule.md",
+        output: TEST_DIR,
+      };
+      await expect(validateConfig(config)).rejects.toThrow("Rule file does not exist");
+    });
   });
 
-  test("validateConfig passes for valid config", async () => {
-    const config: RalphConfig = {
-      refs: [REFS_DIR],
-      rule: RULE_FILE,
-      output: TEST_DIR,
-    };
+  describe("resolvePathsConfig", () => {
+    test("converts relative to absolute paths", () => {
+      const loaded = {
+        refs: ["./.ralph/refs", "./src"],
+        rule: "./.ralph/rule.md",
+        output: ".",
+      };
+      const cwd = "/home/user/project";
 
-    // Should not throw
-    await expect(validateConfig(config)).resolves.toBeUndefined();
+      const resolved = resolvePathsConfig(loaded, cwd);
+
+      expect(resolved.refs).toEqual([
+        "/home/user/project/.ralph/refs",
+        "/home/user/project/src",
+      ]);
+      expect(resolved.rule).toBe("/home/user/project/.ralph/rule.md");
+      expect(resolved.output).toBe("/home/user/project");
+    });
   });
 
-  test("validateConfig throws for missing refs", async () => {
-    const config: RalphConfig = {
-      refs: ["/nonexistent/refs"],
-      rule: RULE_FILE,
-      output: TEST_DIR,
-    };
+  describe("toRelativePath", () => {
+    test("converts absolute to relative paths", () => {
+      const cwd = "/home/user/project";
 
-    await expect(validateConfig(config)).rejects.toThrow("Refs path does not exist");
-  });
-
-  test("validateConfig throws for missing rule file", async () => {
-    const config: RalphConfig = {
-      refs: [REFS_DIR],
-      rule: "/nonexistent/rule.md",
-      output: TEST_DIR,
-    };
-
-    await expect(validateConfig(config)).rejects.toThrow("Rule file does not exist");
-  });
-
-  test("resolvePathsConfig converts relative to absolute paths", () => {
-    const loaded = {
-      refs: ["./.ralph/refs", "./src"],
-      rule: "./.ralph/rule.md",
-      output: ".",
-    };
-    const cwd = "/home/user/project";
-    
-    const resolved = resolvePathsConfig(loaded, cwd);
-    
-    expect(resolved.refs).toEqual(["/home/user/project/.ralph/refs", "/home/user/project/src"]);
-    expect(resolved.rule).toBe("/home/user/project/.ralph/rule.md");
-    expect(resolved.output).toBe("/home/user/project");
-  });
-
-  test("toRelativePath converts absolute to relative paths", () => {
-    const cwd = "/home/user/project";
-    
-    expect(toRelativePath("/home/user/project", cwd)).toBe(".");
-    expect(toRelativePath("/home/user/project/src", cwd)).toBe("./src");
-    expect(toRelativePath("/home/user/project/.ralph/refs", cwd)).toBe("./.ralph/refs");
+      expect(toRelativePath("/home/user/project", cwd)).toBe(".");
+      expect(toRelativePath("/home/user/project/src", cwd)).toBe("./src");
+      expect(toRelativePath("/home/user/project/.ralph/refs", cwd)).toBe("./.ralph/refs");
+    });
   });
 });
 
+// ============================================================================
+// Prompt Building Tests
+// ============================================================================
+
 describe("prompt", () => {
-  test("buildPrompt creates prompt with rule and config", async () => {
+  test("buildPrompt creates prompt with rule and config", () => {
     const config: RalphConfig = {
       refs: [REFS_DIR],
       rule: RULE_FILE,
       output: TEST_DIR,
     };
     const ruleContent = "# Test Rules\nDo something.";
-    
+
     const prompt = buildPrompt(config, ruleContent, TODO_FILE);
-    
+
     expect(prompt).toContain("# Test Rules");
     expect(prompt).toContain(REFS_DIR);
     expect(prompt).toContain(TEST_DIR);
@@ -149,7 +167,7 @@ describe("prompt", () => {
     };
 
     const prompt = await createPrompt(config, TODO_FILE);
-    
+
     expect(prompt).toContain("# Test Rules");
     expect(prompt).toContain(REFS_DIR);
     expect(prompt).toContain(TEST_DIR);
@@ -157,22 +175,22 @@ describe("prompt", () => {
   });
 });
 
+// ============================================================================
+// Integration Tests
+// ============================================================================
+
 describe("config integration", () => {
   test("full config flow works", async () => {
-    // Load paths file created by starter
     const loaded = await loadPathsFile(PATHS_FILE);
-    
-    // Build full config with resolved paths
+
     const config: RalphConfig = {
       refs: loaded.refs.map((r) => resolve(TEST_DIR, r)),
       rule: resolve(TEST_DIR, loaded.rule),
       output: resolve(TEST_DIR, loaded.output),
     };
 
-    // Validate
     await validateConfig(config);
 
-    // Build prompt
     const todoFile = join(config.output, ".ralph", "TODO.md");
     const prompt = await createPrompt(config, todoFile);
 
@@ -181,34 +199,38 @@ describe("config integration", () => {
   });
 });
 
+// ============================================================================
+// Starter Structure Tests
+// ============================================================================
+
 describe("starter structure", () => {
-  test("createStarterStructure creates all required files", async () => {
-    // Check files exist
+  test("creates all required files", async () => {
     expect(await Bun.file(PATHS_FILE).exists()).toBe(true);
     expect(await Bun.file(RULE_FILE).exists()).toBe(true);
-    
-    // Check refs directory exists (by checking we can read from it)
-    const refsDir = Bun.file(REFS_DIR);
-    // refs is a directory, not a file, so we just verify paths.json points to it
+
     const config = await loadPathsFile(PATHS_FILE);
     expect(config.refs).toContain("./.ralph/refs");
   });
 
-  test("starter paths.json has correct structure", async () => {
+  test("paths.json has correct structure", async () => {
     const config = await loadPathsFile(PATHS_FILE);
-    
+
     expect(config.refs).toEqual(["./.ralph/refs"]);
     expect(config.rule).toBe("./.ralph/rule.md");
     expect(config.output).toBe(".");
   });
 });
 
-describe("cli args parsing", () => {
-  test("help flag shows help", async () => {
-    const proc = Bun.spawn(["bun", "run", resolve(import.meta.dir, "..", "src", "cli.ts"), "--help"], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+// ============================================================================
+// CLI Tests
+// ============================================================================
+
+describe("cli", () => {
+  test("help flag shows usage", async () => {
+    const proc = Bun.spawn(
+      ["bun", "run", resolve(import.meta.dir, "..", "src", "cli.ts"), "--help"],
+      { stdout: "pipe", stderr: "pipe" }
+    );
 
     const stdout = await new Response(proc.stdout).text();
     const exitCode = await proc.exited;
@@ -221,76 +243,76 @@ describe("cli args parsing", () => {
   });
 });
 
-describe("access error handling", () => {
-  test("isAccessError returns true for EPERM", () => {
-    const error = { code: "EPERM", message: "operation not permitted" };
-    expect(isAccessError(error)).toBe(true);
+// ============================================================================
+// Access Error Handling Tests
+// ============================================================================
+
+describe("access errors", () => {
+  describe("isAccessError", () => {
+    test("returns true for EPERM", () => {
+      expect(isAccessError({ code: "EPERM" })).toBe(true);
+    });
+
+    test("returns true for EACCES", () => {
+      expect(isAccessError({ code: "EACCES" })).toBe(true);
+    });
+
+    test("returns false for ENOENT", () => {
+      expect(isAccessError({ code: "ENOENT" })).toBe(false);
+    });
+
+    test("returns false for other error codes", () => {
+      expect(isAccessError({ code: "ENOTDIR" })).toBe(false);
+    });
+
+    test("returns false for non-error values", () => {
+      expect(isAccessError(null)).toBe(false);
+      expect(isAccessError(undefined)).toBe(false);
+      expect(isAccessError("string")).toBe(false);
+      expect(isAccessError({ message: "error" })).toBe(false);
+    });
   });
 
-  test("isAccessError returns true for EACCES", () => {
-    const error = { code: "EACCES", message: "permission denied" };
-    expect(isAccessError(error)).toBe(true);
+  describe("listDirectoriesRecursive", () => {
+    test("handles valid directory", async () => {
+      const dirs = await listDirectoriesRecursive(TEST_DIR, 2);
+      expect(dirs).toBeArray();
+    });
+
+    test("throws for non-existent directory", async () => {
+      await expect(
+        listDirectoriesRecursive("/nonexistent/path/that/does/not/exist")
+      ).rejects.toThrow();
+    });
   });
 
-  test("isAccessError returns false for ENOENT", () => {
-    const error = { code: "ENOENT", message: "no such file or directory" };
-    expect(isAccessError(error)).toBe(false);
-  });
+  describe("listFilesRecursive", () => {
+    test("handles valid directory", async () => {
+      const files = await listFilesRecursive(RALPH_DIR, [".md", ".json"]);
+      expect(files).toBeArray();
+      expect(files.some((f) => f.endsWith("rule.md"))).toBe(true);
+      expect(files.some((f) => f.endsWith("paths.json"))).toBe(true);
+    });
 
-  test("isAccessError returns false for other errors", () => {
-    const error = { code: "ENOTDIR", message: "not a directory" };
-    expect(isAccessError(error)).toBe(false);
-  });
+    test("throws for non-existent directory", async () => {
+      await expect(
+        listFilesRecursive("/nonexistent/path", [".md"])
+      ).rejects.toThrow();
+    });
 
-  test("isAccessError returns false for null", () => {
-    expect(isAccessError(null)).toBe(false);
-  });
+    test("filters by extension", async () => {
+      const mdFiles = await listFilesRecursive(RALPH_DIR, [".md"]);
+      const jsonFiles = await listFilesRecursive(RALPH_DIR, [".json"]);
 
-  test("isAccessError returns false for undefined", () => {
-    expect(isAccessError(undefined)).toBe(false);
-  });
-
-  test("isAccessError returns false for string", () => {
-    expect(isAccessError("some error")).toBe(false);
-  });
-
-  test("isAccessError returns false for error without code", () => {
-    const error = { message: "some error" };
-    expect(isAccessError(error)).toBe(false);
-  });
-
-  test("listDirectoriesRecursive handles valid directory", async () => {
-    const dirs = await listDirectoriesRecursive(TEST_DIR, 2);
-    // Should return at least some directories (refs is under .ralph which is hidden, so may not appear)
-    expect(dirs).toBeArray();
-  });
-
-  test("listDirectoriesRecursive returns empty for non-existent directory", async () => {
-    // This should throw ENOENT, not be caught as access error
-    await expect(listDirectoriesRecursive("/nonexistent/path/that/does/not/exist")).rejects.toThrow();
-  });
-
-  test("listFilesRecursive handles valid directory", async () => {
-    const files = await listFilesRecursive(RALPH_DIR, [".md", ".json"]);
-    expect(files).toBeArray();
-    // Should find rule.md and paths.json
-    expect(files.some(f => f.endsWith("rule.md"))).toBe(true);
-    expect(files.some(f => f.endsWith("paths.json"))).toBe(true);
-  });
-
-  test("listFilesRecursive returns empty for non-existent directory", async () => {
-    // This should throw ENOENT, not be caught as access error
-    await expect(listFilesRecursive("/nonexistent/path/that/does/not/exist", [".md"])).rejects.toThrow();
-  });
-
-  test("listFilesRecursive filters by extension", async () => {
-    const mdFiles = await listFilesRecursive(RALPH_DIR, [".md"]);
-    const jsonFiles = await listFilesRecursive(RALPH_DIR, [".json"]);
-    
-    expect(mdFiles.every(f => f.endsWith(".md"))).toBe(true);
-    expect(jsonFiles.every(f => f.endsWith(".json"))).toBe(true);
+      expect(mdFiles.every((f) => f.endsWith(".md"))).toBe(true);
+      expect(jsonFiles.every((f) => f.endsWith(".json"))).toBe(true);
+    });
   });
 });
+
+// ============================================================================
+// Platform Tests
+// ============================================================================
 
 describe("platform", () => {
   test("getPlatform returns valid platform", () => {
@@ -298,8 +320,9 @@ describe("platform", () => {
     expect(["darwin", "linux", "win32", "unknown"]).toContain(platform);
   });
 
-  test("getPlatformConfig returns config for current platform", () => {
+  test("getPlatformConfig returns config with required fields", () => {
     const config = getPlatformConfig();
+
     expect(config).toBeDefined();
     expect(config.accessErrorCodes).toBeArray();
     expect(config.accessErrorCodes).toContain("EPERM");
@@ -314,53 +337,122 @@ describe("platform", () => {
     expect(EXCLUDED_DIRS).toContain("coverage");
   });
 
-  test("shouldExcludeDir returns true for common excluded dirs", () => {
-    expect(shouldExcludeDir("node_modules")).toBe(true);
-    expect(shouldExcludeDir("dist")).toBe(true);
-    expect(shouldExcludeDir(".git")).toBe(true);
+  describe("shouldExcludeDir", () => {
+    test("returns true for excluded directories", () => {
+      expect(shouldExcludeDir("node_modules")).toBe(true);
+      expect(shouldExcludeDir("dist")).toBe(true);
+      expect(shouldExcludeDir(".git")).toBe(true);
+    });
+
+    test("returns false for regular directories", () => {
+      expect(shouldExcludeDir("src")).toBe(false);
+      expect(shouldExcludeDir("lib")).toBe(false);
+      expect(shouldExcludeDir("app")).toBe(false);
+    });
   });
 
-  test("shouldExcludeDir returns false for regular directories", () => {
-    expect(shouldExcludeDir("src")).toBe(false);
-    expect(shouldExcludeDir("lib")).toBe(false);
-    expect(shouldExcludeDir("app")).toBe(false);
+  describe("Claude CLI detection", () => {
+    test("getClaudeInstallInstructions returns string with npm command", () => {
+      const instructions = getClaudeInstallInstructions();
+      expect(typeof instructions).toBe("string");
+      expect(instructions).toContain("npm install");
+      expect(instructions).toContain("claude");
+    });
+
+    test("isClaudeInstalled returns boolean", async () => {
+      const installed = await isClaudeInstalled();
+      expect(typeof installed).toBe("boolean");
+    });
+
+    test("checkClaudeInstallation returns result object", async () => {
+      const result = await checkClaudeInstallation();
+      
+      expect(result).toBeDefined();
+      expect(typeof result.installed).toBe("boolean");
+      expect(typeof result.installInstructions).toBe("string");
+      
+      if (result.installed) {
+        expect(result.path).toBeDefined();
+        expect(typeof result.path).toBe("string");
+      }
+    });
+
+    test("checkClaudeInstallation includes platform-specific instructions", async () => {
+      const result = await checkClaudeInstallation();
+      const platform = getPlatform();
+      
+      // All platforms should have npm install instructions
+      expect(result.installInstructions).toContain("npm install");
+      
+      // macOS should mention Homebrew
+      if (platform === "darwin") {
+        expect(result.installInstructions).toContain("brew");
+      }
+    });
   });
 });
 
+// ============================================================================
+// State Management Tests
+// ============================================================================
+
 describe("state", () => {
-  // Reset state before each test to ensure isolation
   beforeEach(() => {
     resetShutdownState();
   });
 
-  test("isShuttingDown returns false initially", () => {
-    expect(isShuttingDown()).toBe(false);
+  describe("shutdown state", () => {
+    test("isShuttingDown returns false initially", () => {
+      expect(isShuttingDown()).toBe(false);
+    });
+
+    test("setShuttingDown sets state to true", () => {
+      setShuttingDown();
+      expect(isShuttingDown()).toBe(true);
+    });
+
+    test("state remains true after being set", () => {
+      setShuttingDown();
+      expect(isShuttingDown()).toBe(true);
+      expect(isShuttingDown()).toBe(true);
+    });
+
+    test("resetShutdownState resets to false", () => {
+      setShuttingDown();
+      resetShutdownState();
+      expect(isShuttingDown()).toBe(false);
+    });
+
+    test("multiple setShuttingDown calls are idempotent", () => {
+      setShuttingDown();
+      setShuttingDown();
+      setShuttingDown();
+      expect(isShuttingDown()).toBe(true);
+    });
   });
 
-  test("setShuttingDown sets shutdown state to true", () => {
-    expect(isShuttingDown()).toBe(false);
-    setShuttingDown();
-    expect(isShuttingDown()).toBe(true);
-  });
+  describe("throwIfCancelled", () => {
+    test("throws for Symbol (Ctrl+C)", () => {
+      const symbol = Symbol("cancel");
+      expect(() => throwIfCancelled(symbol)).toThrow("Selection cancelled");
+    });
 
-  test("isShuttingDown remains true after being set", () => {
-    setShuttingDown();
-    expect(isShuttingDown()).toBe(true);
-    // Calling again should still be true
-    expect(isShuttingDown()).toBe(true);
-  });
+    test("throws when shutting down", () => {
+      setShuttingDown();
+      expect(() => throwIfCancelled("value")).toThrow("Selection cancelled");
+    });
 
-  test("resetShutdownState resets state to false", () => {
-    setShuttingDown();
-    expect(isShuttingDown()).toBe(true);
-    resetShutdownState();
-    expect(isShuttingDown()).toBe(false);
-  });
+    test("does not throw for normal values", () => {
+      expect(() => throwIfCancelled("string")).not.toThrow();
+      expect(() => throwIfCancelled(true)).not.toThrow();
+      expect(() => throwIfCancelled(false)).not.toThrow();
+      expect(() => throwIfCancelled(123)).not.toThrow();
+      expect(() => throwIfCancelled({ key: "value" })).not.toThrow();
+    });
 
-  test("multiple setShuttingDown calls are idempotent", () => {
-    setShuttingDown();
-    setShuttingDown();
-    setShuttingDown();
-    expect(isShuttingDown()).toBe(true);
+    test("does not throw for null/undefined when not shutting down", () => {
+      expect(() => throwIfCancelled(null)).not.toThrow();
+      expect(() => throwIfCancelled(undefined)).not.toThrow();
+    });
   });
 });

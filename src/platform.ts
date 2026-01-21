@@ -1,4 +1,5 @@
 import { platform } from "os";
+import { which } from "bun";
 
 /**
  * Supported platforms
@@ -110,4 +111,80 @@ export const EXCLUDED_DIRS = [
  */
 export function shouldExcludeDir(dirName: string): boolean {
   return EXCLUDED_DIRS.includes(dirName) || isSystemExcludedDir(dirName);
+}
+
+// ============================================================================
+// Claude CLI Detection
+// ============================================================================
+
+/**
+ * Platform-specific install instructions for Claude CLI
+ */
+const CLAUDE_INSTALL_INSTRUCTIONS: Record<Platform, string> = {
+  darwin: `Install Claude CLI:
+  npm install -g @anthropic-ai/claude-code
+
+Or via Homebrew:
+  brew install claude`,
+  linux: `Install Claude CLI:
+  npm install -g @anthropic-ai/claude-code`,
+  win32: `Install Claude CLI:
+  npm install -g @anthropic-ai/claude-code`,
+  unknown: `Install Claude CLI:
+  npm install -g @anthropic-ai/claude-code`,
+};
+
+/**
+ * Get platform-specific Claude CLI install instructions
+ */
+export function getClaudeInstallInstructions(): string {
+  return CLAUDE_INSTALL_INSTRUCTIONS[getPlatform()];
+}
+
+/**
+ * Check if Claude CLI is installed and available in PATH
+ */
+export async function isClaudeInstalled(): Promise<boolean> {
+  try {
+    const claudePath = which("claude");
+    return claudePath !== null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Result of Claude CLI check
+ */
+export interface ClaudeCheckResult {
+  installed: boolean;
+  path?: string;
+  installInstructions: string;
+}
+
+/**
+ * Check Claude CLI installation and return detailed result
+ */
+export async function checkClaudeInstallation(): Promise<ClaudeCheckResult> {
+  const installInstructions = getClaudeInstallInstructions();
+  
+  try {
+    const claudePath = which("claude");
+    if (claudePath) {
+      return {
+        installed: true,
+        path: claudePath,
+        installInstructions,
+      };
+    }
+    return {
+      installed: false,
+      installInstructions,
+    };
+  } catch {
+    return {
+      installed: false,
+      installInstructions,
+    };
+  }
 }
