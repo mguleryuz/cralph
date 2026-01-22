@@ -152,7 +152,7 @@ Ralph Session: ${state.startTime.toISOString()}
       {
         type: "confirm",
         cancel: "symbol",
-        initial: true,
+        initial: false,
       }
     );
     

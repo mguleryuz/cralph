@@ -8,11 +8,11 @@ import {
   loadPathsFile,
   validateConfig,
   selectRefs,
-  selectRule,
   selectOutput,
   checkForPathsFile,
   resolvePathsConfig,
   toRelativePath,
+  prepareTodo,
 } from "./paths";
 import { run, checkClaudeAuth } from "./runner";
 import type { RalphConfig } from "./types";
@@ -47,7 +47,7 @@ const main = defineCommand({
   meta: {
     name: "cralph",
     version: "1.0.0",
-    description: "Claude in a loop. Point at refs, give it a rule, let it cook.",
+    description: "Claude in a loop. Give it a TODO, let it cook.",
   },
   args: {
     refs: {
@@ -55,13 +55,6 @@ const main = defineCommand({
       description: "Comma-separated refs paths (source material)",
       valueHint: "path1,path2",
       alias: "r",
-      required: false,
-    },
-    rule: {
-      type: "string",
-      description: "Path to rule file (.mdc or .md)",
-      valueHint: "rule.md",
-      alias: "u",
       required: false,
     },
     output: {
@@ -113,18 +106,28 @@ const main = defineCommand({
       
       consola.success("Claude authenticated");
 
-      // Check for existing paths file in cwd
-      const pathsFileResult = args.yes 
-        ? await checkForPathsFile(cwd, true) // Auto-run if --yes
-        : await checkForPathsFile(cwd);
-      
-      if (pathsFileResult?.action === "run") {
-        // Use existing config file
-        consola.info(`Loading config from ${pathsFileResult.path}`);
-        const loaded = await loadPathsFile(pathsFileResult.path);
-        config = resolvePathsConfig(loaded, cwd);
-      } else {
-        // Load existing config for edit mode defaults
+      // Main selection loop - prepare/edit return here, run breaks out
+      while (true) {
+        const pathsFileResult = args.yes
+          ? await checkForPathsFile(cwd, true)
+          : await checkForPathsFile(cwd);
+
+        if (pathsFileResult?.action === "prepare") {
+          const loaded = await loadPathsFile(pathsFileResult.path);
+          const resolved = resolvePathsConfig(loaded, cwd);
+          const outputBase = resolved.output === cwd ? cwd : resolved.output;
+          await prepareTodo(outputBase);
+          continue;
+        }
+
+        if (pathsFileResult?.action === "run") {
+          consola.info(`Loading config from ${pathsFileResult.path}`);
+          const loaded = await loadPathsFile(pathsFileResult.path);
+          config = resolvePathsConfig(loaded, cwd);
+          break;
+        }
+
+        // Edit mode or no config found
         let existingConfig: RalphConfig | null = null;
         if (pathsFileResult?.action === "edit") {
           consola.info("Edit configuration");
@@ -139,19 +142,15 @@ const main = defineCommand({
         }
 
         // Interactive selection
-        const refs = args.refs 
+        const refs = args.refs
           ? args.refs.split(",").map((r) => resolve(cwd, r.trim()))
           : await selectRefs(cwd, existingConfig?.refs, args.yes);
-        
-        const rule = args.rule 
-          ? resolve(cwd, args.rule)
-          : await selectRule(cwd, existingConfig?.rule);
-        
-        const output = args.output 
+
+        const output = args.output
           ? resolve(cwd, args.output)
           : await selectOutput(cwd, existingConfig?.output);
 
-        config = { refs, rule, output };
+        config = { refs, output };
 
         // Offer to save config
         const saveConfig = await consola.prompt("Save configuration to .ralph/paths.json?", {
@@ -159,16 +158,15 @@ const main = defineCommand({
           cancel: "symbol",
           initial: true,
         });
-        
+
         throwIfCancelled(saveConfig);
 
         if (saveConfig === true) {
           const ralphDir = join(cwd, ".ralph");
           await mkdir(ralphDir, { recursive: true });
-          
+
           const pathsConfig = {
             refs: config.refs.map((r) => toRelativePath(r, cwd)),
-            rule: toRelativePath(config.rule, cwd),
             output: toRelativePath(config.output, cwd),
           };
           await Bun.write(
@@ -177,7 +175,11 @@ const main = defineCommand({
           );
           consola.success("Saved .ralph/paths.json");
         }
+
+        // After edit, loop back to main selection
+        continue;
       }
+
 
       // Validate configuration
       consola.info("Validating configuration...");
@@ -186,7 +188,6 @@ const main = defineCommand({
       // Show config summary
       consola.info("Configuration:");
       consola.info(`  Refs: ${config.refs.join(", ")}`);
-      consola.info(`  Rule: ${config.rule}`);
       consola.info(`  Output: ${config.output}`);
       console.log();
 

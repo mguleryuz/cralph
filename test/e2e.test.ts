@@ -59,21 +59,32 @@ describe("e2e", () => {
     // Should exit cleanly after creating starter
     expect(exitCode).toBe(0);
     expect(output).toContain("Created .ralph/refs/");
-    expect(output).toContain("Created .ralph/rule.md");
     expect(output).toContain("Created .ralph/paths.json");
 
     // Verify files were created
     expect(await Bun.file(join(TEST_DIR, ".ralph", "paths.json")).exists()).toBe(true);
-    expect(await Bun.file(join(TEST_DIR, ".ralph", "rule.md")).exists()).toBe(true);
   });
 
-  test("CLI runs with starter config and produces output", async () => {
+  test("CLI runs with TODO and produces output", async () => {
     if (!isAuthed) {
       console.log("Skipping: Claude not authenticated");
       return;
     }
 
-    // Run CLI with --yes to auto-confirm (starter already created by previous test)
+    // Write a simple TODO.md for Claude to work on
+    const todoContent = `# Tasks
+
+- [ ] Create a file named hello.txt with the content "Hello from cralph"
+
+---
+
+# Notes
+
+_Append progress and learnings here after each iteration_
+`;
+    await Bun.write(join(TEST_DIR, ".ralph", "TODO.md"), todoContent);
+
+    // Run CLI with --yes to auto-confirm
     const proc = Bun.spawn(["bun", "run", CLI_PATH, "--yes"], {
       cwd: TEST_DIR,
       stdout: "pipe",
@@ -90,7 +101,7 @@ describe("e2e", () => {
     expect(exitCode).toBe(0);
     expect(output).toContain("COMPLETE");
 
-    // Check that hello.txt was created (as per the default starter rule)
+    // Check that hello.txt was created
     const outputFile = Bun.file(join(TEST_DIR, "hello.txt"));
     expect(await outputFile.exists()).toBe(true);
   }, 120000); // 2 min timeout for full CLI run

@@ -6,8 +6,6 @@ import type { RalphConfig } from "./types";
  */
 const BASE_PROMPT = `You are an autonomous coding agent running in a loop.
 
-FIRST: Read and internalize the rules provided below.
-
 ## Your Task This Iteration
 
 1. Read the TODO file
@@ -55,10 +53,10 @@ After completing ONE task, check the TODO file:
 **IMPORTANT:** Do NOT continue to the next task. Complete ONE task, then STOP.`;
 
 /**
- * Build the complete prompt with config and rules injected
+ * Build the complete prompt with config injected
  */
-export function buildPrompt(config: RalphConfig, rulesContent: string, todoFile: string): string {
-  const refsList = config.refs.length > 0 
+export function buildPrompt(config: RalphConfig, todoFile: string): string {
+  const refsList = config.refs.length > 0
     ? config.refs.map((r) => `- ${r}`).join("\n")
     : "_None_";
 
@@ -76,21 +74,12 @@ ${refsList}
 
 **Output directory (write your work here):**
 ${config.output}
-
----
-
-## Rules (Your Instructions)
-
-${rulesContent}
 `;
 }
 
 /**
- * Read rule file and build complete prompt
+ * Build the complete prompt from config
  */
 export async function createPrompt(config: RalphConfig, todoFile: string): Promise<string> {
-  const ruleFile = Bun.file(config.rule);
-  const ruleContent = await ruleFile.text();
-
-  return buildPrompt(config, ruleContent, todoFile);
+  return buildPrompt(config, todoFile);
 }

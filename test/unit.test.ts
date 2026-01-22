@@ -38,14 +38,12 @@ import type { RalphConfig } from "../src/types";
 const TEST_DIR = join(tmpdir(), `cralph-test-${Date.now()}`);
 const RALPH_DIR = join(TEST_DIR, ".ralph");
 const REFS_DIR = join(RALPH_DIR, "refs");
-const RULE_FILE = join(RALPH_DIR, "rule.md");
 const PATHS_FILE = join(RALPH_DIR, "paths.json");
 const TODO_FILE = join(RALPH_DIR, "TODO.md");
 
 beforeAll(async () => {
   await mkdir(TEST_DIR, { recursive: true });
   await createStarterStructure(TEST_DIR);
-  await Bun.write(RULE_FILE, "# Test Rules\nDo something.");
 });
 
 afterAll(async () => {
@@ -68,7 +66,6 @@ describe("paths", () => {
       expect(config).toBeDefined();
       expect(config.refs).toBeArray();
       expect(config.refs).toContain("./.ralph/refs");
-      expect(config.rule).toBe("./.ralph/rule.md");
       expect(config.output).toBe(".");
     });
 
@@ -81,7 +78,6 @@ describe("paths", () => {
     test("passes for valid config", async () => {
       const config: RalphConfig = {
         refs: [REFS_DIR],
-        rule: RULE_FILE,
         output: TEST_DIR,
       };
       await expect(validateConfig(config)).resolves.toBeUndefined();
@@ -90,19 +86,9 @@ describe("paths", () => {
     test("throws for missing refs", async () => {
       const config: RalphConfig = {
         refs: ["/nonexistent/refs"],
-        rule: RULE_FILE,
         output: TEST_DIR,
       };
       await expect(validateConfig(config)).rejects.toThrow("Refs path does not exist");
-    });
-
-    test("throws for missing rule file", async () => {
-      const config: RalphConfig = {
-        refs: [REFS_DIR],
-        rule: "/nonexistent/rule.md",
-        output: TEST_DIR,
-      };
-      await expect(validateConfig(config)).rejects.toThrow("Rule file does not exist");
     });
   });
 
@@ -110,7 +96,6 @@ describe("paths", () => {
     test("converts relative to absolute paths", () => {
       const loaded = {
         refs: ["./.ralph/refs", "./src"],
-        rule: "./.ralph/rule.md",
         output: ".",
       };
       const cwd = "/home/user/project";
@@ -121,7 +106,6 @@ describe("paths", () => {
         "/home/user/project/.ralph/refs",
         "/home/user/project/src",
       ]);
-      expect(resolved.rule).toBe("/home/user/project/.ralph/rule.md");
       expect(resolved.output).toBe("/home/user/project");
     });
   });
@@ -142,17 +126,14 @@ describe("paths", () => {
 // ============================================================================
 
 describe("prompt", () => {
-  test("buildPrompt creates prompt with rule and config", () => {
+  test("buildPrompt creates prompt with config", () => {
     const config: RalphConfig = {
       refs: [REFS_DIR],
-      rule: RULE_FILE,
       output: TEST_DIR,
     };
-    const ruleContent = "# Test Rules\nDo something.";
 
-    const prompt = buildPrompt(config, ruleContent, TODO_FILE);
+    const prompt = buildPrompt(config, TODO_FILE);
 
-    expect(prompt).toContain("# Test Rules");
     expect(prompt).toContain(REFS_DIR);
     expect(prompt).toContain(TEST_DIR);
     expect(prompt).toContain(TODO_FILE);
@@ -162,13 +143,11 @@ describe("prompt", () => {
   test("createPrompt builds prompt from config", async () => {
     const config: RalphConfig = {
       refs: [REFS_DIR],
-      rule: RULE_FILE,
       output: TEST_DIR,
     };
 
     const prompt = await createPrompt(config, TODO_FILE);
 
-    expect(prompt).toContain("# Test Rules");
     expect(prompt).toContain(REFS_DIR);
     expect(prompt).toContain(TEST_DIR);
     expect(prompt).toContain(TODO_FILE);
@@ -185,7 +164,6 @@ describe("config integration", () => {
 
     const config: RalphConfig = {
       refs: loaded.refs.map((r) => resolve(TEST_DIR, r)),
-      rule: resolve(TEST_DIR, loaded.rule),
       output: resolve(TEST_DIR, loaded.output),
     };
 
@@ -206,7 +184,6 @@ describe("config integration", () => {
 describe("starter structure", () => {
   test("creates all required files", async () => {
     expect(await Bun.file(PATHS_FILE).exists()).toBe(true);
-    expect(await Bun.file(RULE_FILE).exists()).toBe(true);
 
     const config = await loadPathsFile(PATHS_FILE);
     expect(config.refs).toContain("./.ralph/refs");
@@ -216,7 +193,6 @@ describe("starter structure", () => {
     const config = await loadPathsFile(PATHS_FILE);
 
     expect(config.refs).toEqual(["./.ralph/refs"]);
-    expect(config.rule).toBe("./.ralph/rule.md");
     expect(config.output).toBe(".");
   });
 });
@@ -238,7 +214,6 @@ describe("cli", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toContain("cralph");
     expect(stdout).toContain("--refs");
-    expect(stdout).toContain("--rule");
     expect(stdout).toContain("--output");
   });
 });
@@ -288,9 +263,8 @@ describe("access errors", () => {
 
   describe("listFilesRecursive", () => {
     test("handles valid directory", async () => {
-      const files = await listFilesRecursive(RALPH_DIR, [".md", ".json"]);
+      const files = await listFilesRecursive(RALPH_DIR, [".json"]);
       expect(files).toBeArray();
-      expect(files.some((f) => f.endsWith("rule.md"))).toBe(true);
       expect(files.some((f) => f.endsWith("paths.json"))).toBe(true);
     });
 
@@ -301,10 +275,8 @@ describe("access errors", () => {
     });
 
     test("filters by extension", async () => {
-      const mdFiles = await listFilesRecursive(RALPH_DIR, [".md"]);
       const jsonFiles = await listFilesRecursive(RALPH_DIR, [".json"]);
 
-      expect(mdFiles.every((f) => f.endsWith(".md"))).toBe(true);
       expect(jsonFiles.every((f) => f.endsWith(".json"))).toBe(true);
     });
   });
@@ -366,11 +338,11 @@ describe("platform", () => {
 
     test("checkClaudeInstallation returns result object", async () => {
       const result = await checkClaudeInstallation();
-      
+
       expect(result).toBeDefined();
       expect(typeof result.installed).toBe("boolean");
       expect(typeof result.installInstructions).toBe("string");
-      
+
       if (result.installed) {
         expect(result.path).toBeDefined();
         expect(typeof result.path).toBe("string");
@@ -380,10 +352,10 @@ describe("platform", () => {
     test("checkClaudeInstallation includes platform-specific instructions", async () => {
       const result = await checkClaudeInstallation();
       const platform = getPlatform();
-      
+
       // All platforms should have npm install instructions
       expect(result.installInstructions).toContain("npm install");
-      
+
       // macOS should mention Homebrew
       if (platform === "darwin") {
         expect(result.installInstructions).toContain("brew");

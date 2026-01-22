@@ -4,13 +4,13 @@
   <img src="https://raw.githubusercontent.com/mguleryuz/cralph/main/assets/ralph.png" alt="Ralph cooking" width="500">
 </p>
 
-Claude in a loop. Give it a rule, let it cook.
+Claude in a loop. Give it a TODO, let it cook.
 
 ```
 .ralph/
-├── rule.md ──loop──> ./
-├── refs/             (output)
-└── TODO.md
+├── refs/             (read-only reference material)
+├── TODO.md ──loop──> ./
+└── paths.json        (output)
 ```
 
 ## What is Ralph?
@@ -39,7 +39,7 @@ bun add -g cralph
 # In any directory without .ralph/ - creates starter structure
 cralph
 
-# Edit rule.md with your instructions, then run again
+# Run again - prepare your TODO, then run
 cralph
 ```
 
@@ -50,7 +50,7 @@ cralph
 cralph
 
 # Override with flags
-cralph --refs ./source --rule ./rule.md --output .
+cralph --refs ./source --output .
 
 # Auto-confirm prompts (CI/automation)
 cralph --yes
@@ -59,19 +59,63 @@ cralph --yes
 ## How It Works
 
 1. Checks Claude CLI auth (cached for 6 hours)
-2. Looks for `.ralph/` in current directory only (not subdirectories)
-3. Loads config from `.ralph/paths.json` or creates starter structure
+2. Looks for `.ralph/` in current directory
+3. Shows main menu: **Run** / **Prepare TODO** / **Edit config**
 4. Runs `claude -p --dangerously-skip-permissions` in a loop
 5. Claude completes **ONE task per iteration**, marks it done, then stops
 6. Auto-commits progress after each iteration (fails gracefully if no git)
 7. Stops when Claude outputs `<promise>COMPLETE</promise>`
+
+## Main Menu
+
+When `.ralph/paths.json` exists, you get:
+
+```
+❯ Found .ralph/paths.json. What would you like to do?
+● 🚀 Run with this config
+○ 📝 Prepare TODO
+○ ✏️  Edit configuration
+```
+
+- **Run** — validates config and starts the loop
+- **Prepare TODO** — describe your tasks, Claude generates TODO.md, returns to menu
+- **Edit** — re-select refs/output, save config, returns to menu
+
+## Prepare TODO
+
+Selecting **Prepare TODO** prompts you to describe what Claude should work on:
+
+```
+? Describe your tasks (what should Claude work on?):
+> Build a REST API with user auth, add unit tests, setup error handling
+```
+
+Claude generates a structured TODO.md with ordered, actionable tasks:
+
+```markdown
+# Tasks
+
+- [ ] Set up Express server with basic routing
+- [ ] Add user authentication with JWT
+- [ ] Create user CRUD endpoints
+- [ ] Add error handling middleware
+- [ ] Write unit tests for auth module
+- [ ] Write unit tests for user endpoints
+
+---
+
+# Notes
+
+_Append progress and learnings here after each iteration_
+```
+
+You can prepare TODO multiple times — each run overwrites the previous.
 
 ## Config
 
 ```json
 {
   "refs": ["./.ralph/refs"],
-  "rule": "./.ralph/rule.md",
   "output": "."
 }
 ```
@@ -82,10 +126,9 @@ Save as `.ralph/paths.json`. Refs are optional reference material (read-only).
 
 | File | Description |
 |------|-------------|
-| `.ralph/paths.json` | Configuration |
-| `.ralph/rule.md` | Your instructions for Claude |
+| `.ralph/paths.json` | Configuration (refs, output) |
 | `.ralph/refs/` | Optional reference material (read-only) |
-| `.ralph/TODO.md` | Task tracking (updated by Claude) |
+| `.ralph/TODO.md` | Task tracking (generated or manual, updated by Claude) |
 | `.ralph/ralph.log` | Session log |
 | `~/.cralph/auth-cache.json` | Auth cache (6h TTL) |
 
@@ -107,9 +150,6 @@ Claude maintains this structure (one task per iteration):
 - What was implemented
 - Files changed
 - Learnings: patterns discovered, gotchas encountered
-
-## Task 2 - Done
-- ...
 ```
 
 ## First Run (No .ralph/ in cwd)
@@ -124,39 +164,29 @@ Select **Create starter structure** to generate the default config:
 
 ```
 ℹ Created .ralph/refs/ directory
-ℹ Created .ralph/rule.md with starter template
 ℹ Created .ralph/paths.json
 
-╭─────────────────────────────────────────────────╮
-│  1. Add source files to .ralph/refs/            │
-│  2. Edit .ralph/rule.md with your instructions  │
-│  3. Run cralph again                            │
-╰─────────────────────────────────────────────────╯
+╭──────────────────────────────────────────────╮
+│  1. Add source files to .ralph/refs/         │
+│  2. Run cralph again to prepare your TODO    │
+╰──────────────────────────────────────────────╯
 ```
 
-Select **Configure manually** to skip starter creation and pick your own refs/rule/output.
+## TODO Reset
 
-Use `--yes` to auto-create starter structure (for CI/automation).
+When running, if TODO.md has existing progress:
 
-## Prompts
-
-**Config detected:**
 ```
-❯ Found .ralph/paths.json. What would you like to do?
-● 🚀 Run with this config
-○ ✏️  Edit configuration
+? Found existing TODO with progress. Reset to start fresh? (y/N)
 ```
 
-**TODO has progress:**
-```
-? Found existing TODO with progress. Reset to start fresh? (Y/n)
-```
+Default is **No** — continues with existing progress.
 
 ## Path Selection
 
-- **Space** - Toggle selection
-- **Enter** - Confirm
-- **Ctrl+C** - Exit
+- **Space** — Toggle selection
+- **Enter** — Confirm
+- **Ctrl+C** — Exit
 
 ## Platform Support
 
@@ -168,7 +198,7 @@ cralph works on **macOS**, **Linux**, and **Windows** with platform-specific han
 | Linux    | lost+found, proc, sys |
 | Windows  | System Volume Information, $Recycle.Bin, Windows |
 
-Permission errors (`EPERM`, `EACCES`) are handled gracefully on all platforms, allowing the CLI to run from any directory.
+Permission errors (`EPERM`, `EACCES`) are handled gracefully on all platforms.
 
 ## Testing
 
@@ -176,8 +206,8 @@ Permission errors (`EPERM`, `EACCES`) are handled gracefully on all platforms, a
 bun test
 ```
 
-- **Unit tests** - Config, prompt building, CLI, access error handling, platform detection, shutdown state
-- **E2E tests** - Full loop with Claude (requires auth)
+- **Unit tests** — Config, prompt building, CLI, access error handling, platform detection, shutdown state
+- **E2E tests** — Full loop with Claude (requires auth)
 
 ## Requirements
 

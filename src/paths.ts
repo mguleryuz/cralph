@@ -6,10 +6,6 @@ import type { PathsFileConfig, RalphConfig } from "./types";
 import { isAccessError, shouldExcludeDir } from "./platform";
 import { throwIfCancelled } from "./state";
 
-// Starter rule template for new projects
-const STARTER_RULE = `I want a file named hello.txt
-`;
-
 // Dim text helper
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 const CONTROLS = dim("↑↓ Navigate • Space Toggle • Enter • Ctrl+C Exit");
@@ -20,7 +16,6 @@ const CONTROLS = dim("↑↓ Navigate • Space Toggle • Enter • Ctrl+C Exit
 export function resolvePathsConfig(loaded: PathsFileConfig, cwd: string): RalphConfig {
   return {
     refs: loaded.refs.map((r) => resolve(cwd, r)),
-    rule: resolve(cwd, loaded.rule),
     output: resolve(cwd, loaded.output),
   };
 }
@@ -38,6 +33,7 @@ export function toRelativePath(absolutePath: string, cwd: string): string {
  */
 function shouldSkipDirectory(entry: Dirent): boolean {
   if (!entry.isDirectory()) return true;
+  if (entry.name === ".ralph") return false; // Always show .ralph
   if (entry.name.startsWith(".")) return true;
   if (shouldExcludeDir(entry.name)) return true;
   return false;
@@ -50,7 +46,7 @@ async function listDirectories(basePath: string): Promise<string[]> {
   try {
     const entries = await readdir(basePath, { withFileTypes: true });
     return entries
-      .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+      .filter((e) => e.isDirectory() && (e.name === ".ralph" || !e.name.startsWith(".")))
       .map((e) => e.name);
   } catch (error) {
     // Silently skip directories we can't access
@@ -154,27 +150,21 @@ export async function createStarterStructure(cwd: string): Promise<void> {
   // Create .ralph/
   const ralphDir = join(cwd, ".ralph");
   await mkdir(ralphDir, { recursive: true });
-  
+
   // Create .ralph/refs/
   const refsDir = join(ralphDir, "refs");
   await mkdir(refsDir, { recursive: true });
   consola.info("Created .ralph/refs/ directory");
-  
-  // Create .ralph/rule.md
-  const rulePath = join(ralphDir, "rule.md");
-  await Bun.write(rulePath, STARTER_RULE);
-  consola.info("Created .ralph/rule.md with starter template");
-  
+
   // Create .ralph/paths.json with default config
   const pathsConfig = {
     refs: ["./.ralph/refs"],
-    rule: "./.ralph/rule.md",
     output: ".",
   };
   await Bun.write(join(ralphDir, "paths.json"), JSON.stringify(pathsConfig, null, 2));
   consola.info("Created .ralph/paths.json");
-  
-  consola.box("1. Add source files to .ralph/refs/\n2. Edit .ralph/rule.md with your instructions\n3. Run cralph again");
+
+  consola.box("1. Add source files to .ralph/refs/\n2. Run cralph again to prepare your TODO");
 }
 
 /**
@@ -263,39 +253,80 @@ export async function selectRefs(cwd: string, defaults?: string[], autoConfirm?:
 }
 
 /**
- * Prompt user to select a rule file
+ * Prompt user to prepare TODO.md by describing their tasks
+ * Uses Claude to generate a properly formatted TODO.md
  */
-export async function selectRule(cwd: string, defaultRule?: string): Promise<string> {
-  let files = await listFilesRecursive(cwd, [".mdc", ".md"]);
-  if (files.length === 0) {
-    // This shouldn't happen if selectRefs ran first, but handle it just in case
-    const rulePath = join(cwd, "rule.md");
-    await Bun.write(rulePath, STARTER_RULE);
-    consola.info("Created rule.md with starter template");
-    consola.box("Edit rule.md with your instructions then run cralph again");
-    process.exit(0);
+export async function prepareTodo(cwd: string): Promise<void> {
+  const ralphDir = join(cwd, ".ralph");
+  const todoPath = join(ralphDir, "TODO.md");
+
+  const description = await consola.prompt(
+    "Describe your tasks (what should Claude work on?):",
+    {
+      type: "text",
+      cancel: "symbol",
+      placeholder: "e.g. Build a REST API with user auth, add tests, setup CI...",
+    }
+  );
+
+  throwIfCancelled(description);
+
+  if (!description || (description as string).trim() === "") {
+    consola.warn("No description provided, skipping TODO preparation");
+    return;
   }
 
-  // Show relative paths for readability
-  const options = files.map((f) => ({
-    label: `📄 ${f.replace(cwd + "/", "")}`,
-    value: f,
-    hint: f === defaultRule ? "current" : (f.endsWith(".mdc") ? "cursor rule" : "markdown"),
-  }));
+  consola.start("Generating TODO.md from your description...");
 
-  // Find initial value for default selection
-  const initialValue = defaultRule && files.includes(defaultRule) ? defaultRule : files[0];
+  const todoPrompt = `You are generating a TODO.md file for an autonomous coding agent. Based on the user's description, create a well-structured TODO.md with clear, actionable tasks.
 
-  console.log(CONTROLS);
-  const selected = await consola.prompt("Select rule file:", {
-    type: "select",
-    cancel: "symbol",
-    options,
-    initial: initialValue,
-  });
+Rules:
+- Each task should be a single, focused unit of work
+- Tasks should be ordered logically (dependencies first)
+- Use the checkbox format: "- [ ] Task description"
+- Keep task descriptions concise but specific
+- Include a Notes section placeholder at the bottom
 
-  throwIfCancelled(selected);
-  return selected as string;
+User's description:
+${(description as string).trim()}
+
+Output ONLY the TODO.md content, nothing else. Use this exact format:
+
+# Tasks
+
+- [ ] First task
+- [ ] Second task
+...
+
+---
+
+# Notes
+
+_Append progress and learnings here after each iteration_`;
+
+  try {
+    const proc = Bun.spawn(["claude", "-p"], {
+      stdin: new Blob([todoPrompt]),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const stdout = await new Response(proc.stdout).text();
+    const exitCode = await proc.exited;
+
+    if (exitCode !== 0) {
+      consola.error("Failed to generate TODO.md");
+      return;
+    }
+
+    // Write the generated TODO
+    await mkdir(ralphDir, { recursive: true });
+    await Bun.write(todoPath, stdout.trim() + "\n");
+    consola.success("Generated .ralph/TODO.md");
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    consola.error(`Failed to generate TODO: ${msg}`);
+  }
 }
 
 /**
@@ -340,19 +371,18 @@ export async function selectOutput(cwd: string, defaultOutput?: string): Promise
 
 /**
  * Check if a paths file exists and offer to use it
- * Returns: { action: "run", path: string } | { action: "edit" } | null
  * @param autoRun - If true, skip prompt and auto-select "run" when config exists
  */
-export async function checkForPathsFile(cwd: string, autoRun?: boolean): Promise<{ action: "run"; path: string } | { action: "edit" } | null> {
+export async function checkForPathsFile(cwd: string, autoRun?: boolean): Promise<{ action: "run" | "edit" | "prepare"; path: string } | null> {
   const filePath = join(cwd, ".ralph", "paths.json");
   const file = Bun.file(filePath);
-  
+
   if (await file.exists()) {
     // Auto-run if flag is set
     if (autoRun) {
       return { action: "run", path: filePath };
     }
-    
+
     console.log(CONTROLS);
     const action = await consola.prompt(
       `Found .ralph/paths.json. What would you like to do?`,
@@ -361,17 +391,15 @@ export async function checkForPathsFile(cwd: string, autoRun?: boolean): Promise
         cancel: "symbol",
         options: [
           { label: "🚀 Run with this config", value: "run" },
+          { label: "📝 Prepare TODO", value: "prepare" },
           { label: "✏️  Edit configuration", value: "edit" },
         ],
       }
     );
-    
+
     throwIfCancelled(action);
-    
-    if (action === "run") {
-      return { action: "run", path: filePath };
-    }
-    return { action: "edit" };
+
+    return { action: action as "run" | "edit" | "prepare", path: filePath };
   }
 
   return null;
@@ -388,12 +416,6 @@ export async function validateConfig(config: RalphConfig): Promise<void> {
     } catch {
       throw new Error(`Refs path does not exist: ${ref}`);
     }
-  }
-
-  // Check rule file
-  const ruleFile = Bun.file(config.rule);
-  if (!(await ruleFile.exists())) {
-    throw new Error(`Rule file does not exist: ${config.rule}`);
   }
 
   // Output directory will be created if needed
