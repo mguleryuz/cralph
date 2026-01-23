@@ -61,10 +61,11 @@ cralph --yes
 1. Checks Claude CLI auth (cached for 6 hours)
 2. Looks for `.ralph/` in current directory
 3. Shows main menu: **Run** / **Prepare TODO** / **Edit config**
-4. Runs `claude -p --dangerously-skip-permissions` in a loop
-5. Claude completes **ONE task per iteration**, marks it done, then stops
-6. Auto-commits progress after each iteration (fails gracefully if no git)
-7. Stops when Claude outputs `<promise>COMPLETE</promise>`
+4. If no `TODO.md` exists, prompts you to describe your goal before starting
+5. Runs `claude -p --dangerously-skip-permissions` in a loop
+6. Claude completes **ONE task per iteration**, marks it done, then stops
+7. Auto-commits progress after each iteration (fails gracefully if no git)
+8. Stops when Claude outputs `<promise>COMPLETE</promise>`
 
 ## Main Menu
 
@@ -77,7 +78,7 @@ When `.ralph/paths.json` exists, you get:
 ○ ✏️  Edit configuration
 ```
 
-- **Run** — validates config and starts the loop
+- **Run** — validates config, prompts for TODO if missing, then starts the loop
 - **Prepare TODO** — describe your tasks, Claude generates TODO.md, returns to menu
 - **Edit** — re-select refs/output, save config, returns to menu
 

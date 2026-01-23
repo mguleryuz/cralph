@@ -196,20 +196,11 @@ const main = defineCommand({
       consola.info(`  Output: ${config.output}`);
       console.log();
 
-      // Confirm before running (skip if --yes)
-      if (!args.yes) {
-        const proceed = await consola.prompt("Start processing?", {
-          type: "confirm",
-          cancel: "symbol",
-          initial: true,
-        });
-        
-        throwIfCancelled(proceed);
-
-        if (proceed !== true) {
-          consola.info("Cancelled.");
-          process.exit(0);
-        }
+      // Check if TODO.md exists — if not, prompt the prepare todo flow
+      const todoPath = join(config.output, ".ralph", "TODO.md");
+      const todoFile = Bun.file(todoPath);
+      if (!(await todoFile.exists())) {
+        await prepareTodo(config.output);
       }
 
       // Run the main loop

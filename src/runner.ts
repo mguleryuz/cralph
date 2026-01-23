@@ -129,14 +129,16 @@ ${goal}
 ${refs.length > 0 ? "1. First, read the reference directories above to understand the existing code, structure, and patterns.\n2. Then, based" : "Based"} on the goal and your understanding of the codebase, produce a compact, actionable task list.
 
 Rules:
+- Always break down the goal into multiple high-level tasks representing the logical steps to achieve it (e.g., "a todo list" → project setup, data model, CRUD operations, UI, etc.)
+- Never produce a single task that just restates the goal — decompose it into its natural components
 - Keep tasks concise and specific — each should be completable in one iteration
 - Preserve the user's intent and wording where possible
 - Order tasks by dependency (foundational work first)
-- Do NOT guess implementation details the user didn't specify
+- Do NOT over-specify implementation details — keep tasks at a high level so the agent can decide the approach
 - Do NOT add unnecessary tasks (no boilerplate setup unless explicitly needed)
 - Do NOT fill in the Notes section — leave it with just the placeholder
 
-Output ONLY the TODO.md content in this EXACT format:
+Output ONLY the raw markdown below — no preamble, no explanation, no reasoning, no code fences. Your response must start with "# Tasks" on the very first line:
 
 # Tasks
 
@@ -179,7 +181,13 @@ _Append progress and learnings here after each iteration_`;
       return;
     }
 
-    await Bun.write(todoPath, result.stdout.trim() + "\n");
+    // Strip any preamble — output must start with "# Tasks"
+    let output = result.stdout.trim();
+    const tasksIndex = output.indexOf("# Tasks");
+    if (tasksIndex > 0) {
+      output = output.slice(tasksIndex);
+    }
+    await Bun.write(todoPath, output.trim() + "\n");
     consola.success("Task list generated");
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
