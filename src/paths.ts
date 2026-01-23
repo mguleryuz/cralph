@@ -253,15 +253,15 @@ export async function selectRefs(cwd: string, defaults?: string[], autoConfirm?:
 }
 
 /**
- * Prompt user to prepare TODO.md by describing their tasks
- * Uses Claude to generate a structured TODO.md (no file discovery, 10s max)
+ * Prompt user to prepare TODO.md by writing their goal
+ * Ralph will read the GOAL and create a task list on first iteration
  */
 export async function prepareTodo(cwd: string): Promise<void> {
   const ralphDir = join(cwd, ".ralph");
   const todoPath = join(ralphDir, "TODO.md");
 
   const description = await consola.prompt(
-    "Describe your tasks (what should Claude work on?):",
+    "Describe what you want built:",
     {
       type: "text",
       cancel: "symbol",
@@ -276,78 +276,14 @@ export async function prepareTodo(cwd: string): Promise<void> {
     return;
   }
 
-  consola.start("Generating TODO.md...");
+  const todoContent = `# GOAL
 
-  const todoPrompt = `You are generating a TODO.md file. Turn the user's prompt into a task list.
-
-CRITICAL RULES:
-- Do NOT read, search, or discover any files
-- Do NOT use any tools
-- Do NOT investigate the codebase
-- Do NOT guess techniques or implementation details - another agent (Ralph) will figure those out
-- Keep the user's original meaning and essence - just structure it as tasks
-- Use the checkbox format: "- [ ] Task description"
-- Tasks should be ordered logically
-- Include a Notes section placeholder at the bottom
-- Respond IMMEDIATELY with just the TODO content
-
-User's description:
 ${(description as string).trim()}
+`;
 
-Output ONLY the TODO.md content in markdown format, nothing else. Use this EXACT file format:
-
-\`\`\`
-# Tasks
-
-- [ ] First task
-- [ ] Second task
-
----
-
-# Notes
-
-_Append progress and learnings here after each iteration_
-\`\`\`
-
-Do NOT wrap your response in a code block. Output the raw markdown directly.`;
-
-  try {
-    const proc = Bun.spawn(["claude", "-p", "--max-turns", "1"], {
-      stdin: new Blob([todoPrompt]),
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-
-    const result = await Promise.race([
-      (async () => {
-        const stdout = await new Response(proc.stdout).text();
-        const exitCode = await proc.exited;
-        return { stdout, exitCode };
-      })(),
-      (async () => {
-        await Bun.sleep(10000);
-        proc.kill();
-        return null;
-      })(),
-    ]);
-
-    if (!result) {
-      consola.error("TODO generation timed out (10s limit)");
-      return;
-    }
-
-    if (result.exitCode !== 0) {
-      consola.error("Failed to generate TODO.md");
-      return;
-    }
-
-    await mkdir(ralphDir, { recursive: true });
-    await Bun.write(todoPath, result.stdout.trim() + "\n");
-    consola.success("Generated .ralph/TODO.md");
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    consola.error(`Failed to generate TODO: ${msg}`);
-  }
+  await mkdir(ralphDir, { recursive: true });
+  await Bun.write(todoPath, todoContent);
+  consola.success("Saved goal to .ralph/TODO.md");
 }
 
 /**

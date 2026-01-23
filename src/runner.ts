@@ -4,7 +4,7 @@ import { mkdir } from "fs/promises";
 import { homedir } from "os";
 import type { RalphConfig, RunnerState, IterationResult } from "./types";
 import { createPrompt } from "./prompt";
-import { setCurrentProcess, throwIfCancelled } from "./state";
+import { setCurrentProcess } from "./state";
 
 const COMPLETION_SIGNAL = "<promise>COMPLETE</promise>";
 const AUTH_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
@@ -106,18 +106,6 @@ export async function checkClaudeAuth(): Promise<boolean> {
 }
 
 /**
- * Check if the TODO file is in a clean/initial state
- */
-async function isTodoClean(todoPath: string): Promise<boolean> {
-  const file = Bun.file(todoPath);
-  if (!(await file.exists())) {
-    return true; // Non-existent is considered clean
-  }
-  const content = await file.text();
-  return content.trim() === INITIAL_TODO_CONTENT.trim();
-}
-
-/**
  * Initialize the runner state and log file
  */
 async function initRunner(outputDir: string): Promise<RunnerState> {
@@ -138,32 +126,10 @@ Ralph Session: ${state.startTime.toISOString()}
 
   await Bun.write(state.logFile, logHeader);
 
-  // Check TODO file state
+  // Create TODO file if it doesn't exist
   const todoFile = Bun.file(state.todoFile);
-  const todoExists = await todoFile.exists();
-  
-  if (!todoExists) {
-    // Create fresh TODO file
+  if (!(await todoFile.exists())) {
     await Bun.write(state.todoFile, INITIAL_TODO_CONTENT);
-  } else if (!(await isTodoClean(state.todoFile))) {
-    // TODO exists and has been modified - ask about reset
-    const response = await consola.prompt(
-      "Found existing TODO with progress. Reset to start fresh?",
-      {
-        type: "confirm",
-        cancel: "symbol",
-        initial: false,
-      }
-    );
-    
-    throwIfCancelled(response);
-    
-    if (response === true) {
-      await Bun.write(state.todoFile, INITIAL_TODO_CONTENT);
-      consola.info("TODO reset to clean state");
-    } else {
-      consola.info("Continuing with existing TODO state");
-    }
   }
 
   return state;

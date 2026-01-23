@@ -1,6 +1,6 @@
 {
   "name": "cralph",
-  "version": "1.0.0-beta.10",
+  "version": "1.0.0-beta.11",
   "description": "Claude in a loop. Point at refs, give it a rule, let it cook.",
   "author": "mguleryuz",
   "license": "MIT",
