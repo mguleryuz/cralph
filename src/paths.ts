@@ -278,18 +278,16 @@ export async function prepareTodo(cwd: string): Promise<void> {
 
   consola.start("Generating TODO.md...");
 
-  const todoPrompt = `You are generating a TODO.md file for an autonomous coding agent. Based on the user's description, create a well-structured TODO.md with clear, actionable tasks.
+  const todoPrompt = `You are generating a TODO.md file. Turn the user's prompt into a task list.
 
 CRITICAL RULES:
 - Do NOT read, search, or discover any files
 - Do NOT use any tools
 - Do NOT investigate the codebase
-- ONLY output the TODO.md content based on the user's description
-- Rephrase and clean up the user's prompt into clear, UI-suitable task descriptions
-- Each task should be a single, focused unit of work
-- Tasks should be ordered logically (dependencies first)
+- Do NOT guess techniques or implementation details - another agent (Ralph) will figure those out
+- Keep the user's original meaning and essence - just structure it as tasks
 - Use the checkbox format: "- [ ] Task description"
-- Keep task descriptions concise but specific
+- Tasks should be ordered logically
 - Include a Notes section placeholder at the bottom
 - Respond IMMEDIATELY with just the TODO content
 
