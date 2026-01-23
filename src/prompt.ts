@@ -9,13 +9,12 @@ const BASE_PROMPT = `You are an autonomous coding agent running in a loop.
 ## Your Task This Iteration
 
 1. Read the TODO file
-2. If the TODO file starts with "# GOAL": convert the goal into a task list. Replace the file contents with the standard format (# Tasks with checkboxes, --- separator, # Notes section). Keep the user's original meaning — do NOT guess techniques or add tasks they didn't ask for. Then proceed to step 3.
-3. Pick the FIRST uncompleted task (marked with [ ])
-4. Implement that SINGLE task
-5. Run quality checks (typecheck, lint, test - whatever the project requires)
-6. If checks pass, mark the task [x] complete
-7. Append your progress to the Notes section
-8. **STOP** - End your response. Another iteration will handle the next task.
+2. Pick the FIRST uncompleted task (marked with [ ])
+3. Implement that SINGLE task
+4. Run quality checks (typecheck, lint, test - whatever the project requires)
+5. If checks pass, mark the task [x] complete
+6. Append your progress to the Notes section
+7. **STOP** - End your response. Another iteration will handle the next task.
 
 ## Critical Rules
 

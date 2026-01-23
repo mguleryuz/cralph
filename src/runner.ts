@@ -106,6 +106,70 @@ export async function checkClaudeAuth(): Promise<boolean> {
 }
 
 /**
+ * Convert a # GOAL TODO into a proper task list using Claude
+ */
+async function convertGoalToTasks(todoPath: string, content: string): Promise<void> {
+  const goal = content.replace(/^#\s*GOAL\s*/i, "").trim();
+
+  consola.start("Converting goal to task list...");
+
+  const prompt = `Turn the following goal into a task list. Keep the user's original words and meaning. Do NOT guess techniques or implementation details. Do NOT fill in the Notes section — leave it with just the placeholder.
+
+Goal:
+${goal}
+
+Output ONLY the TODO.md content in this EXACT format:
+
+# Tasks
+
+- [ ] First task
+- [ ] Second task
+
+---
+
+# Notes
+
+_Append progress and learnings here after each iteration_`;
+
+  try {
+    const proc = Bun.spawn(["claude", "-p", "--max-turns", "1"], {
+      stdin: new Blob([prompt]),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const result = await Promise.race([
+      (async () => {
+        const stdout = await new Response(proc.stdout).text();
+        const exitCode = await proc.exited;
+        return { stdout, exitCode };
+      })(),
+      (async () => {
+        await Bun.sleep(10000);
+        proc.kill();
+        return null;
+      })(),
+    ]);
+
+    if (!result) {
+      consola.error("Goal conversion timed out (10s limit)");
+      return;
+    }
+
+    if (result.exitCode !== 0) {
+      consola.error("Failed to convert goal to tasks");
+      return;
+    }
+
+    await Bun.write(todoPath, result.stdout.trim() + "\n");
+    consola.success("Converted goal to task list");
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    consola.error(`Failed to convert goal: ${msg}`);
+  }
+}
+
+/**
  * Initialize the runner state and log file
  */
 async function initRunner(outputDir: string): Promise<RunnerState> {
@@ -130,6 +194,12 @@ Ralph Session: ${state.startTime.toISOString()}
   const todoFile = Bun.file(state.todoFile);
   if (!(await todoFile.exists())) {
     await Bun.write(state.todoFile, INITIAL_TODO_CONTENT);
+  } else {
+    // If TODO starts with # GOAL, convert it to a task list
+    const content = await todoFile.text();
+    if (content.trimStart().startsWith("# GOAL")) {
+      await convertGoalToTasks(state.todoFile, content);
+    }
   }
 
   return state;
