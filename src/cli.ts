@@ -146,6 +146,11 @@ const main = defineCommand({
           ? args.refs.split(",").map((r) => resolve(cwd, r.trim()))
           : await selectRefs(cwd, existingConfig?.refs, args.yes);
 
+        // Starter was created, go back to main menu
+        if (!refs) {
+          continue;
+        }
+
         const output = args.output
           ? resolve(cwd, args.output)
           : await selectOutput(cwd, existingConfig?.output);

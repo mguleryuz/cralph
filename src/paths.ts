@@ -171,7 +171,7 @@ export async function createStarterStructure(cwd: string): Promise<void> {
  * Prompt user to select refs directories (simple multiselect)
  * @param autoConfirm - If true, skip confirmation prompts
  */
-export async function selectRefs(cwd: string, defaults?: string[], autoConfirm?: boolean): Promise<string[]> {
+export async function selectRefs(cwd: string, defaults?: string[], autoConfirm?: boolean): Promise<string[] | null> {
   // Check if .ralph/ exists in cwd - if not, offer to create starter structure
   const ralphDir = join(cwd, ".ralph");
   let ralphExists = false;
@@ -197,19 +197,19 @@ export async function selectRefs(cwd: string, defaults?: string[], autoConfirm?:
           ],
         }
       );
-      
+
       throwIfCancelled(action);
-      
+
       if (action === "create") {
         await createStarterStructure(cwd);
-        process.exit(0);
+        return null; // Signal to go back to main menu
       }
-      
+
       // action === "manual" - continue to directory selection
     } else {
       // Auto-confirm mode: create starter structure
       await createStarterStructure(cwd);
-      process.exit(0);
+      return null; // Signal to go back to main menu
     }
   }
 
@@ -254,7 +254,7 @@ export async function selectRefs(cwd: string, defaults?: string[], autoConfirm?:
 
 /**
  * Prompt user to prepare TODO.md by describing their tasks
- * Uses Claude to generate a properly formatted TODO.md
+ * Uses Claude to generate a structured TODO.md (no file discovery, 10s max)
  */
 export async function prepareTodo(cwd: string): Promise<void> {
   const ralphDir = join(cwd, ".ralph");
@@ -276,52 +276,75 @@ export async function prepareTodo(cwd: string): Promise<void> {
     return;
   }
 
-  consola.start("Generating TODO.md from your description...");
+  consola.start("Generating TODO.md...");
 
   const todoPrompt = `You are generating a TODO.md file for an autonomous coding agent. Based on the user's description, create a well-structured TODO.md with clear, actionable tasks.
 
-Rules:
+CRITICAL RULES:
+- Do NOT read, search, or discover any files
+- Do NOT use any tools
+- Do NOT investigate the codebase
+- ONLY output the TODO.md content based on the user's description
+- Rephrase and clean up the user's prompt into clear, UI-suitable task descriptions
 - Each task should be a single, focused unit of work
 - Tasks should be ordered logically (dependencies first)
 - Use the checkbox format: "- [ ] Task description"
 - Keep task descriptions concise but specific
 - Include a Notes section placeholder at the bottom
+- Respond IMMEDIATELY with just the TODO content
 
 User's description:
 ${(description as string).trim()}
 
-Output ONLY the TODO.md content, nothing else. Use this exact format:
+Output ONLY the TODO.md content in markdown format, nothing else. Use this EXACT file format:
 
+\`\`\`
 # Tasks
 
 - [ ] First task
 - [ ] Second task
-...
 
 ---
 
 # Notes
 
-_Append progress and learnings here after each iteration_`;
+_Append progress and learnings here after each iteration_
+\`\`\`
+
+Do NOT wrap your response in a code block. Output the raw markdown directly.`;
 
   try {
-    const proc = Bun.spawn(["claude", "-p"], {
+    const proc = Bun.spawn(["claude", "-p", "--max-turns", "1"], {
       stdin: new Blob([todoPrompt]),
       stdout: "pipe",
       stderr: "pipe",
     });
 
-    const stdout = await new Response(proc.stdout).text();
-    const exitCode = await proc.exited;
+    const result = await Promise.race([
+      (async () => {
+        const stdout = await new Response(proc.stdout).text();
+        const exitCode = await proc.exited;
+        return { stdout, exitCode };
+      })(),
+      (async () => {
+        await Bun.sleep(10000);
+        proc.kill();
+        return null;
+      })(),
+    ]);
 
-    if (exitCode !== 0) {
+    if (!result) {
+      consola.error("TODO generation timed out (10s limit)");
+      return;
+    }
+
+    if (result.exitCode !== 0) {
       consola.error("Failed to generate TODO.md");
       return;
     }
 
-    // Write the generated TODO
     await mkdir(ralphDir, { recursive: true });
-    await Bun.write(todoPath, stdout.trim() + "\n");
+    await Bun.write(todoPath, result.stdout.trim() + "\n");
     consola.success("Generated .ralph/TODO.md");
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
