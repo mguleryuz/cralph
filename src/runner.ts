@@ -106,17 +106,35 @@ export async function checkClaudeAuth(): Promise<boolean> {
 }
 
 /**
- * Convert a # GOAL TODO into a proper task list using Claude
+ * Convert a # GOAL TODO into a proper task list using Claude.
+ * Claude reads the refs/codebase to produce a meaningful, compact task list.
  */
-async function convertGoalToTasks(todoPath: string, content: string): Promise<void> {
+async function convertGoalToTasks(todoPath: string, content: string, refs: string[]): Promise<void> {
   const goal = content.replace(/^#\s*GOAL\s*/i, "").trim();
 
-  consola.start("Converting goal to task list...");
+  consola.start("Reading codebase and generating task list...");
 
-  const prompt = `Turn the following goal into a task list. Keep the user's original words and meaning. Do NOT guess techniques or implementation details. Do NOT fill in the Notes section — leave it with just the placeholder.
+  const refsSection = refs.length > 0
+    ? `## Reference Material\n\nRead the following directories to understand the codebase before generating tasks:\n${refs.map((r) => `- ${r}`).join("\n")}\n\n`
+    : "";
 
-Goal:
+  const prompt = `You are generating a task list for an autonomous coding agent.
+
+${refsSection}## Goal
+
 ${goal}
+
+## Instructions
+
+${refs.length > 0 ? "1. First, read the reference directories above to understand the existing code, structure, and patterns.\n2. Then, based" : "Based"} on the goal and your understanding of the codebase, produce a compact, actionable task list.
+
+Rules:
+- Keep tasks concise and specific — each should be completable in one iteration
+- Preserve the user's intent and wording where possible
+- Order tasks by dependency (foundational work first)
+- Do NOT guess implementation details the user didn't specify
+- Do NOT add unnecessary tasks (no boilerplate setup unless explicitly needed)
+- Do NOT fill in the Notes section — leave it with just the placeholder
 
 Output ONLY the TODO.md content in this EXACT format:
 
@@ -132,7 +150,7 @@ Output ONLY the TODO.md content in this EXACT format:
 _Append progress and learnings here after each iteration_`;
 
   try {
-    const proc = Bun.spawn(["claude", "-p", "--max-turns", "1"], {
+    const proc = Bun.spawn(["claude", "-p", "--dangerously-skip-permissions"], {
       stdin: new Blob([prompt]),
       stdout: "pipe",
       stderr: "pipe",
@@ -145,14 +163,14 @@ _Append progress and learnings here after each iteration_`;
         return { stdout, exitCode };
       })(),
       (async () => {
-        await Bun.sleep(10000);
+        await Bun.sleep(60000);
         proc.kill();
         return null;
       })(),
     ]);
 
     if (!result) {
-      consola.error("Goal conversion timed out (10s limit)");
+      consola.error("Goal conversion timed out (60s limit)");
       return;
     }
 
@@ -162,7 +180,7 @@ _Append progress and learnings here after each iteration_`;
     }
 
     await Bun.write(todoPath, result.stdout.trim() + "\n");
-    consola.success("Converted goal to task list");
+    consola.success("Task list generated");
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     consola.error(`Failed to convert goal: ${msg}`);
@@ -172,8 +190,8 @@ _Append progress and learnings here after each iteration_`;
 /**
  * Initialize the runner state and log file
  */
-async function initRunner(outputDir: string): Promise<RunnerState> {
-  const ralphDir = join(outputDir, ".ralph");
+async function initRunner(config: RalphConfig): Promise<RunnerState> {
+  const ralphDir = join(config.output, ".ralph");
   await mkdir(ralphDir, { recursive: true });
 
   const state: RunnerState = {
@@ -198,7 +216,7 @@ Ralph Session: ${state.startTime.toISOString()}
     // If TODO starts with # GOAL, convert it to a task list
     const content = await todoFile.text();
     if (content.trimStart().startsWith("# GOAL")) {
-      await convertGoalToTasks(state.todoFile, content);
+      await convertGoalToTasks(state.todoFile, content, config.refs);
     }
   }
 
@@ -322,7 +340,7 @@ export async function run(config: RalphConfig): Promise<void> {
   consola.info("Starting ralph...");
 
   // Initialize state
-  const state = await initRunner(config.output);
+  const state = await initRunner(config);
   consola.info(`Log: ${state.logFile}`);
   consola.info(`TODO: ${state.todoFile}`);
 
